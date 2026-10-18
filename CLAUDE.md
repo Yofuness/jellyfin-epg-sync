@@ -9,6 +9,8 @@ Jellyfin 10.11 plugin (C#, net9.0) that renames Live TV channels to the EPG prog
 
 ## Releases
 `.github/workflows/release.yml` runs when a GitHub release is published. It turns the tag (`v1.2.3`) into a 4-part version, runs `./test.sh`, then `./build.sh`, and uploads `dist/*` to the release. The plugin repository URL is `releases/latest/download/manifest.json`.
+Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bind` is required because the scripts start Docker containers that mount the repo:
+`echo '{"action":"published","release":{"tag_name":"v1.0.0"}}' > /tmp/ev.json && act release -e /tmp/ev.json --bind -P ubuntu-latest=catthehacker/ubuntu:act-latest`
 
 ## Layout
 - `ChannelRenamer.cs`: core logic. Queries `LiveTvChannel`, then the airing `LiveTvProgram`, applies the name template.
