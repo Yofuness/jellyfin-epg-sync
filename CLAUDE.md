@@ -7,6 +7,9 @@ Jellyfin 10.11 plugin (C#, net9.0) that renames Live TV channels to the EPG prog
 - Output: `Jellyfin.Plugin.EpgChannelNames/bin/Release/net9.0/*.dll`, plus `dist/` zip and `manifest.json`
 - `build.sh` runs as the host user. If `bin/` or `obj/` end up root-owned, remove them through a container, e.g. `docker run --rm -v "$PWD/Jellyfin.Plugin.EpgChannelNames":/src alpine rm -rf /src/bin /src/obj`
 
+## Releases
+`.github/workflows/release.yml` runs when a GitHub release is published. It turns the tag (`v1.2.3`) into a 4-part version, runs `./test.sh`, then `./build.sh`, and uploads `dist/*` to the release. The plugin repository URL is `releases/latest/download/manifest.json`.
+
 ## Layout
 - `ChannelRenamer.cs`: core logic. Queries `LiveTvChannel`, then the airing `LiveTvProgram`, applies the name template.
 - `RenameChannelsTask.cs`: scheduled task (startup + interval). Key `EpgChannelNamesRename`.
