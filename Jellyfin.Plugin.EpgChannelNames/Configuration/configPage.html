@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>EPG Channel Names</title></head>
+<body>
+<div id="EpgChannelNamesConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
+  <div data-role="content">
+    <div class="content-primary">
+      <form id="EpgChannelNamesConfigForm">
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="ChannelNameRegex" label="Channels to rename (regex on original name)" />
+          <div class="fieldDescription">Example: <code>^NHL GAME \d+</code> or <code>^(NHL|NBA) GAME \d+</code></div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="NameTemplate" label="Name while a program is airing" />
+          <div class="fieldDescription">Tokens: {program}, {prefix} (regex match), {original}, {number}</div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="NoProgramTemplate" label="Name when nothing is airing" />
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="number" id="IntervalMinutes" min="1" label="Default refresh interval (minutes, applies on first install)" />
+        </div>
+        <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+      </form>
+    </div>
+  </div>
+  <script type="text/javascript">
+    (function () {
+      var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
+      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'IntervalMinutes'];
+      var page = document.querySelector('#EpgChannelNamesConfigPage');
+      page.addEventListener('pageshow', function () {
+        Dashboard.showLoadingMsg();
+        ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+          fields.forEach(function (f) { page.querySelector('#' + f).value = config[f]; });
+          Dashboard.hideLoadingMsg();
+        });
+      });
+      page.querySelector('#EpgChannelNamesConfigForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        Dashboard.showLoadingMsg();
+        ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+          fields.forEach(function (f) { config[f] = page.querySelector('#' + f).value; });
+          config.IntervalMinutes = parseInt(config.IntervalMinutes, 10) || 15;
+          ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
+        });
+        return false;
+      });
+    })();
+  </script>
+</div>
+</body>
+</html>
