@@ -7,7 +7,7 @@ BASE_URL="${2:-https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$ROOT/Jellyfin.Plugin.EpgChannelNames"
 
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PROJ":/src -w /src mcr.microsoft.com/dotnet/sdk:9.0 \
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$ROOT":/src -w /src/Jellyfin.Plugin.EpgChannelNames mcr.microsoft.com/dotnet/sdk:9.0 \
   dotnet build -c Release -p:Version="$VER" -p:AssemblyVersion="$VER" -p:FileVersion="$VER"
 
 mkdir -p "$ROOT/dist"
