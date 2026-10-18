@@ -4,7 +4,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SDK=mcr.microsoft.com/dotnet/sdk:9.0
-JF_IMAGE=jellyfin/jellyfin:10.11.11
+# Oldest supported server: proves the plugin loads on every 10.11.x.
+JF_IMAGE=jellyfin/jellyfin:10.11.0
 PORT=18097
 
 echo "== Unit tests"

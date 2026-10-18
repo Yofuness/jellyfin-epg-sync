@@ -22,11 +22,11 @@ Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bi
 ## Key behavior (non-obvious)
 - Jellyfin resets channel names to the M3U name on every guide refresh. The plugin stores `EpgChannelNames.Original` and `EpgChannelNames.Applied` in `channel.ProviderIds`. Any name different from `Applied` counts as a fresh original.
 - The regex matches against the original name, never the renamed one.
-- Target ABI 10.11 (`Jellyfin.Controller` 10.11.*). Jellyfin 12.x needs a separate build.
+- Target ABI 10.11. `Jellyfin.Controller`/`Jellyfin.Model` are pinned to 10.11.0, the oldest 10.11. Building against a newer patch (e.g. 10.11.11) fails to load on older servers ("Could not load MediaBrowser.Common, Version=10.11.11.0"). Never use a wildcard. Jellyfin 12.x needs a separate build.
 
 ## Testing
 - `./test.sh`: unit tests (xUnit + Moq) in `Jellyfin.Plugin.EpgChannelNames.Tests/`, about 30 s. Run after every change.
-- `./test.sh --integration`: also boots `jellyfin/jellyfin:10.11.11` in Docker with a fake M3U + XMLTV, checks the rename, then swaps the game and checks again. About 1-2 min.
+- `./test.sh --integration`: also boots `jellyfin/jellyfin:10.11.0` in Docker with a fake M3U + XMLTV, checks the rename, then swaps the game and checks again. About 1-2 min.
 - Tests inject config through the internal `ChannelRenamer(libraryManager, logger, getConfig)` constructor and set the static `BaseItem.LibraryManager` to a mock, so the test class runs in one serial collection.
 - Name templating lives in the pure `ChannelRenamer.BuildName`. Test new tokens there.
 - Jellyfin caches XMLTV in `/cache/xmltv`. The integration test clears it before the second refresh.

@@ -23,7 +23,7 @@ cat > "$ROOT/dist/manifest.json" <<JSON
     "name": "EPG Channel Names",
     "description": "Renames Live TV channels to the program currently airing in the EPG.",
     "overview": "Fixes stale channel names like 'NHL GAME 01 Team A vs Team B'.",
-    "owner": "johann",
+    "owner": "Yofuness",
     "category": "LiveTV",
     "versions": [
       {
