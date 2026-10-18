@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using Jellyfin.Plugin.EpgChannelNames.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
@@ -24,6 +25,7 @@ public class ChannelRenamer
 
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ChannelRenamer> _logger;
+    private readonly Func<PluginConfiguration> _getConfig;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ChannelRenamer"/> class.
@@ -31,9 +33,41 @@ public class ChannelRenamer
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
     public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger)
+        : this(libraryManager, logger, () => Plugin.Instance!.Configuration)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ChannelRenamer"/> class with an explicit config source. Used by tests.
+    /// </summary>
+    /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
+    /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
+    /// <param name="getConfig">Returns the current configuration.</param>
+    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, Func<PluginConfiguration> getConfig)
     {
         _libraryManager = libraryManager;
         _logger = logger;
+        _getConfig = getConfig;
+    }
+
+    /// <summary>
+    /// Fills a name template.
+    /// </summary>
+    /// <param name="template">Template with {program}, {original}, {number} and {prefix} tokens.</param>
+    /// <param name="programName">Current program title, or null when nothing is airing.</param>
+    /// <param name="original">The channel's original name.</param>
+    /// <param name="number">The channel number, if any.</param>
+    /// <param name="prefix">The regex match within the original name.</param>
+    /// <returns>The filled name, or <paramref name="original"/> when the result is empty.</returns>
+    internal static string BuildName(string template, string? programName, string original, string? number, string prefix)
+    {
+        var name = template
+            .Replace("{program}", programName ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{original}", original, StringComparison.OrdinalIgnoreCase)
+            .Replace("{number}", number ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{prefix}", prefix.Trim(), StringComparison.OrdinalIgnoreCase)
+            .Trim();
+        return string.IsNullOrEmpty(name) ? original : name;
     }
 
     /// <summary>
@@ -44,7 +78,7 @@ public class ChannelRenamer
     /// <returns>A task that completes when all channels are processed.</returns>
     public async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
-        var config = Plugin.Instance!.Configuration;
+        var config = _getConfig();
         var filter = new Regex(config.ChannelNameRegex, RegexOptions.IgnoreCase);
         var now = DateTime.UtcNow;
 
@@ -82,16 +116,7 @@ public class ChannelRenamer
             }) is { Count: > 0 } programs ? programs[0] : null;
 
             var template = program is null ? config.NoProgramTemplate : config.NameTemplate;
-            var newName = template
-                .Replace("{program}", program?.Name ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-                .Replace("{original}", original, StringComparison.OrdinalIgnoreCase)
-                .Replace("{number}", channel.Number ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-                .Replace("{prefix}", match.Value.Trim(), StringComparison.OrdinalIgnoreCase)
-                .Trim();
-            if (string.IsNullOrEmpty(newName))
-            {
-                newName = original;
-            }
+            var newName = BuildName(template, program?.Name, original, channel.Number, match.Value);
 
             if (newName == channel.Name && applied == newName)
             {

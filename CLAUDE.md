@@ -20,7 +20,11 @@ Jellyfin 10.11 plugin (C#, net9.0) that renames Live TV channels to the EPG prog
 - Target ABI 10.11 (`Jellyfin.Controller` 10.11.*). Jellyfin 12.x needs a separate build.
 
 ## Testing
-Run `jellyfin/jellyfin:10.11.11` in Docker with the DLL mounted in `/config/plugins/EpgChannelNames/`, a sample M3U, and XMLTV. Finish setup through the `/Startup/*` API, add the tuner and listings, then trigger Refresh Guide by its task Id from `/ScheduledTasks`. Check names with `/LiveTv/Channels`.
+- `./test.sh`: unit tests (xUnit + Moq) in `Jellyfin.Plugin.EpgChannelNames.Tests/`, about 30 s. Run after every change.
+- `./test.sh --integration`: also boots `jellyfin/jellyfin:10.11.11` in Docker with a fake M3U + XMLTV, checks the rename, then swaps the game and checks again. About 1-2 min.
+- Tests inject config through the internal `ChannelRenamer(libraryManager, logger, getConfig)` constructor and set the static `BaseItem.LibraryManager` to a mock, so the test class runs in one serial collection.
+- Name templating lives in the pure `ChannelRenamer.BuildName`. Test new tokens there.
+- Jellyfin caches XMLTV in `/cache/xmltv`. The integration test clears it before the second refresh.
 
 ## Code standards
 Jellyfin has no written C# style guide. We follow the official plugin template (github.com/jellyfin/jellyfin-plugin-template), which the build enforces:

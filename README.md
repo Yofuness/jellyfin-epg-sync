@@ -23,5 +23,9 @@ Dashboard → Plugins → EPG Channel Names:
 
 Run now: Dashboard → Scheduled Tasks → Live TV → "Rename channels from EPG".
 
+## Tests
+- `./test.sh`: unit tests (Docker only)
+- `./test.sh --integration`: also runs the plugin in a real Jellyfin 10.11 container
+
 ## Requirement
 Each game channel needs EPG data in Dispatcharr (a real EPG source or a Dispatcharr dummy EPG that puts the matchup in the program title). No program = no new name.
