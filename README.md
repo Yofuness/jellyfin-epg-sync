@@ -29,3 +29,6 @@ Run now: Dashboard → Scheduled Tasks → Live TV → "Rename channels from EPG
 
 ## Requirement
 Each game channel needs EPG data in Dispatcharr (a real EPG source or a Dispatcharr dummy EPG that puts the matchup in the program title). No program = no new name.
+
+## License
+GPL-3.0. See [LICENSE](LICENSE).

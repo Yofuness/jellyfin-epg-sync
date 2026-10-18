@@ -33,4 +33,5 @@ Jellyfin has no written C# style guide. We follow the official plugin template (
 - Every public member needs an XML doc comment (`<inheritdoc />` for interface/override members). Property summaries start with "Gets or sets".
 - Fix analyzer findings instead of suppressing them. Any `#pragma warning disable` or `NoWarn` needs a comment explaining why.
 - Version lives in `Directory.Build.props`. `build.sh` overrides it per release.
+- License: GPL-3.0 (matches the Jellyfin plugin template).
 - Conduct: Jellyfin Community Standards, https://jellyfin.org/docs/general/community-standards/

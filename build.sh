@@ -3,7 +3,7 @@
 # Usage: ./build.sh [version] [repo-base-url]
 set -euo pipefail
 VER="${1:-1.0.0.0}"
-BASE_URL="${2:-https://github.com/YOURNAME/jellyfin-epg-channel-names/releases/download/v$VER}"
+BASE_URL="${2:-https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v$VER}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$ROOT/Jellyfin.Plugin.EpgChannelNames"
 
