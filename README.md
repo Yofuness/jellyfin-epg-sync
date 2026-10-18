@@ -5,14 +5,19 @@ Renames Live TV channels to whatever the EPG says is airing now.
 
 Jellyfin resets channel names to the M3U name on every "Refresh Guide". This plugin re-applies the EPG name right after each guide refresh, plus every 15 minutes.
 
-## Install (manual, 2 minutes)
+## Install (plugin repository, recommended)
+1. Dashboard → Plugins → Repositories (or Catalog → gear icon) → **+**
+2. Name: `EPG Channel Names`
+   URL: `https://github.com/Yofuness/jellyfin-epg-sync/releases/latest/download/manifest.json`
+3. Save, open the Catalog, and install **EPG Channel Names**
+4. Restart Jellyfin
+
+Updates: the URL always points at the newest release, so Jellyfin offers new versions automatically.
+
+## Install (manual)
 1. `./build.sh` (needs Docker only)
 2. Copy `Jellyfin.Plugin.EpgChannelNames/bin/Release/net9.0/Jellyfin.Plugin.EpgChannelNames.dll` into `<jellyfin config>/plugins/EpgChannelNames/`
 3. Restart Jellyfin
-
-## Install (plugin repository)
-1. Dashboard → Plugins → Repositories → add `https://github.com/Yofuness/jellyfin-epg-sync/releases/latest/download/manifest.json`
-2. Catalog → install "EPG Channel Names", restart Jellyfin
 
 ## Releasing
 Publish a GitHub release with a tag like `v1.0.1`. The Release workflow runs the tests, builds the plugin, and attaches the zip and `manifest.json` to the release.
