@@ -21,3 +21,12 @@ Jellyfin 10.11 plugin (C#, net9.0) that renames Live TV channels to the EPG prog
 
 ## Testing
 Run `jellyfin/jellyfin:10.11.11` in Docker with the DLL mounted in `/config/plugins/EpgChannelNames/`, a sample M3U, and XMLTV. Finish setup through the `/Startup/*` API, add the tuner and listings, then trigger Refresh Guide by its task Id from `/ScheduledTasks`. Check names with `/LiveTv/Channels`.
+
+## Code standards
+Jellyfin has no written C# style guide. We follow the official plugin template (github.com/jellyfin/jellyfin-plugin-template), which the build enforces:
+- `.editorconfig` and `Directory.Build.props` are copied unchanged from the template. Don't edit the style rules.
+- `TreatWarningsAsErrors` + `AnalysisMode=AllEnabledByDefault` + StyleCop, Serilog and Multithreading analyzers. The build must stay at 0 warnings.
+- Every public member needs an XML doc comment (`<inheritdoc />` for interface/override members). Property summaries start with "Gets or sets".
+- Fix analyzer findings instead of suppressing them. Any `#pragma warning disable` or `NoWarn` needs a comment explaining why.
+- Version lives in `Directory.Build.props`. `build.sh` overrides it per release.
+- Conduct: Jellyfin Community Standards, https://jellyfin.org/docs/general/community-standards/

@@ -10,17 +10,23 @@ public class GuideRefreshListener : IHostedService
 {
     private readonly ITaskManager _taskManager;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="GuideRefreshListener"/> class.
+    /// </summary>
+    /// <param name="taskManager">Instance of the <see cref="ITaskManager"/> interface.</param>
     public GuideRefreshListener(ITaskManager taskManager)
     {
         _taskManager = taskManager;
     }
 
+    /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _taskManager.TaskCompleted += OnTaskCompleted;
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _taskManager.TaskCompleted -= OnTaskCompleted;

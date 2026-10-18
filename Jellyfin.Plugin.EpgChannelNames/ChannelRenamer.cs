@@ -12,6 +12,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.EpgChannelNames;
 
+/// <summary>
+/// Renames matching Live TV channels to the program currently airing.
+/// </summary>
 public class ChannelRenamer
 {
     // Stored in ProviderIds so they survive restarts. Jellyfin's guide refresh
@@ -22,12 +25,23 @@ public class ChannelRenamer
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ChannelRenamer> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ChannelRenamer"/> class.
+    /// </summary>
+    /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
+    /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
     public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger)
     {
         _libraryManager = libraryManager;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Renames every matching channel once.
+    /// </summary>
+    /// <param name="progress">Progress reporter, 0 to 100.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when all channels are processed.</returns>
     public async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance!.Configuration;
@@ -65,7 +79,7 @@ public class ChannelRenamer
                 MaxStartDate = now,
                 MinEndDate = now,
                 Limit = 1
-            }).FirstOrDefault();
+            }) is { Count: > 0 } programs ? programs[0] : null;
 
             var template = program is null ? config.NoProgramTemplate : config.NameTemplate;
             var newName = template
