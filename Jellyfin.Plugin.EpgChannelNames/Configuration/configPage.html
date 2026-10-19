@@ -2,7 +2,7 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>EPG Channel Names</title></head>
 <body>
-<div id="EpgChannelNamesConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
+<div id="EpgChannelNamesConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
   <div data-role="content">
     <div class="content-primary">
       <form id="EpgChannelNamesConfigForm">
@@ -30,6 +30,13 @@
           <input is="emby-input" type="text" id="StreamTitleRegex" label="Game title regex (on stream name)" />
           <div class="fieldDescription">Uses the <code>title</code> group. Default takes the text after <code>:</code> up to <code>/</code>.</div>
         </div>
+        <div class="checkboxContainer">
+          <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Also rename guide programs to the game title</span></label>
+          <div class="fieldDescription">Fixes stale titles on the Programs page and guide. Only for channels whose title comes from Dispatcharr.</div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="number" id="ProgramWindowHours" min="1" label="Hours ahead to rename programs" />
+        </div>
         <div class="inputContainer">
           <input is="emby-input" type="number" id="IntervalMinutes" min="1" label="Default refresh interval (minutes, applies on first install)" />
         </div>
@@ -40,12 +47,13 @@
   <script type="text/javascript">
     (function () {
       var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
-      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'StreamTitleRegex', 'IntervalMinutes'];
+      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'StreamTitleRegex', 'ProgramWindowHours', 'IntervalMinutes'];
       var page = document.querySelector('#EpgChannelNamesConfigPage');
       page.addEventListener('pageshow', function () {
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
           fields.forEach(function (f) { page.querySelector('#' + f).value = config[f]; });
+          page.querySelector('#RenamePrograms').checked = config.RenamePrograms;
           Dashboard.hideLoadingMsg();
         });
       });
@@ -55,6 +63,8 @@
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
           fields.forEach(function (f) { config[f] = page.querySelector('#' + f).value; });
           config.IntervalMinutes = parseInt(config.IntervalMinutes, 10) || 15;
+          config.ProgramWindowHours = parseInt(config.ProgramWindowHours, 10) || 12;
+          config.RenamePrograms = page.querySelector('#RenamePrograms').checked;
           ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
         });
         return false;

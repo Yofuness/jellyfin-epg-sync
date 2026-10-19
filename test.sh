@@ -103,9 +103,17 @@ channel_names() {
   curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print("\n".join(c["Name"] for c in json.load(sys.stdin)["Items"]))'
 }
 
+# Retries for up to 30 s: the rename task is queued after a guide refresh, not run inline.
 expect() {
-  local names; names="$(channel_names)"
-  if grep -qxF "$1" <<<"$names"; then echo "PASS: $1"; else echo "FAIL: expected '$1', got:"; echo "$names"; exit 1; fi
+  local names
+  for _ in $(seq 30); do
+    names="$(channel_names)"
+    if grep -qxF "$1" <<<"$names"; then echo "PASS: $1"; return; fi
+    sleep 1
+  done
+  echo "FAIL: expected '$1', got:"; echo "$names"
+  docker logs "$NAME" 2>&1 | grep -E "EpgChannelNames|Rename channels|Refresh Guide" | tail -8
+  exit 1
 }
 
 refresh_and_wait
@@ -136,9 +144,13 @@ rename_and_wait
 expect "NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET"
 expect "CBC News"
 
-# Dispatcharr down: fall back to the EPG instead of failing.
+# Dispatcharr down: keep the last known game (programs were renamed to it) instead of failing...
 docker stop "$FAKE" >/dev/null
 rename_and_wait
+expect "NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET"
+# ...until the next guide refresh restores the EPG's own program titles.
+docker exec "$NAME" sh -c 'rm -rf /cache/xmltv/*'
+refresh_and_wait
 expect "NHL GAME 01 · Oilers vs Flames"
 
 echo "Integration test passed"

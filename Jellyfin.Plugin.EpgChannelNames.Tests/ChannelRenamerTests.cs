@@ -27,6 +27,8 @@ public class ChannelRenamerTests
     private readonly Mock<ILibraryManager> _library = new();
     private readonly List<LiveTvChannel> _channels = new();
     private readonly Dictionary<Guid, string> _programs = new();
+    private readonly Dictionary<Guid, LiveTvProgram> _programItems = new();
+    private readonly Dictionary<Guid, string> _seededTitles = new();
     private readonly PluginConfiguration _config = new();
     private readonly Mock<IDispatcharrClient> _dispatcharr = new();
     private readonly Dictionary<string, string> _streamNames = new();
@@ -38,8 +40,8 @@ public class ChannelRenamerTests
             .Returns(() => _channels.Cast<BaseItem>().ToList());
         _library
             .Setup(l => l.GetItemList(It.Is<InternalItemsQuery>(q => q.IncludeItemTypes.Contains(BaseItemKind.LiveTvProgram))))
-            .Returns((InternalItemsQuery q) => _programs.TryGetValue(q.ChannelIds.Single(), out var title)
-                ? new List<BaseItem> { new LiveTvProgram { Name = title } }
+            .Returns((InternalItemsQuery q) => GetProgram(q.ChannelIds.Single()) is { } p
+                ? new List<BaseItem> { p }
                 : new List<BaseItem>());
         _dispatcharr
             .Setup(d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()))
@@ -166,6 +168,70 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task Dispatcharr_RenamesStalePlaceholderProgram()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "CA - NHL GAME 03 : SEATTLE KRAKEN @ TAMPA BAY LIGHTNING OCT 15", number: "14");
+        _streamNames["14"] = "CA - NHL GAME 03 : SAN JOSE SHARKS @ TORONTO MAPLE LEAFS OCT 19 – 7:30 PM ET / OCT 20 – 12:30 AM UK";
+
+        await RunAsync();
+
+        var program = _programItems[channel.Id];
+        Assert.Equal("SAN JOSE SHARKS @ TORONTO MAPLE LEAFS OCT 19 – 7:30 PM ET", program.Name);
+        _library.Verify(l => l.UpdateItemAsync(program, It.IsAny<BaseItem>(), ItemUpdateType.MetadataEdit, It.IsAny<CancellationToken>()), Times.Once());
+    }
+
+    [Fact]
+    public async Task Dispatcharr_NoGame_ProgramGetsChannelName()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 07", "CA - NHL GAME 07 : WINNIPEG JETS @ CHICAGO BLACKHAWKS OCT 15", number: "10");
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
+
+        await RunAsync();
+
+        Assert.Equal("NHL GAME 07", _programItems[channel.Id].Name);
+    }
+
+    [Fact]
+    public async Task Programs_SecondRun_DoesNotSaveAgain()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "placeholder", number: "14");
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+
+        await RunAsync();
+        await RunAsync();
+
+        var program = _programItems[channel.Id];
+        _library.Verify(l => l.UpdateItemAsync(program, It.IsAny<BaseItem>(), It.IsAny<ItemUpdateType>(), It.IsAny<CancellationToken>()), Times.Once());
+    }
+
+    [Fact]
+    public async Task RenameProgramsOff_LeavesProgramsAlone()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.RenamePrograms = false;
+        var channel = AddChannel("CA - NHL GAME 03", "placeholder", number: "14");
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+
+        await RunAsync();
+
+        Assert.Equal("placeholder", GetProgram(channel.Id)!.Name);
+    }
+
+    [Fact]
+    public async Task EpgTitle_ProgramsAreNotTouched()
+    {
+        var channel = AddChannel("CA - NHL GAME 01", "Real EPG Game");
+
+        await RunAsync();
+
+        var program = _programItems[channel.Id];
+        _library.Verify(l => l.UpdateItemAsync(program, It.IsAny<BaseItem>(), It.IsAny<ItemUpdateType>(), It.IsAny<CancellationToken>()), Times.Never());
+    }
+
+    [Fact]
     public async Task Summary_IsLoggedEveryRun()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
@@ -180,7 +246,7 @@ public class ChannelRenamerTests
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(
-            "Checked 3 channels: 2 matched 'NHL GAME \\d+', 2 renamed; titles from Dispatcharr 1, from EPG 0, nothing airing 1",
+            "Checked 3 channels: 2 matched 'NHL GAME \\d+', 2 renamed; titles from Dispatcharr 1, from EPG 0, nothing airing 1; 2 programs renamed",
             logger.Messages);
         Assert.DoesNotContain(logger.Messages, m => m.StartsWith("No Live TV channels matched", StringComparison.Ordinal));
     }
@@ -291,6 +357,25 @@ public class ChannelRenamerTests
         }
 
         return channel;
+    }
+
+    // One persistent program per channel, so renames by the plugin are visible to later queries.
+    // Changing _programs[channel] simulates a guide refresh and creates a fresh program.
+    private LiveTvProgram? GetProgram(Guid channelId)
+    {
+        if (!_programs.TryGetValue(channelId, out var title))
+        {
+            return null;
+        }
+
+        if (!_programItems.TryGetValue(channelId, out var program) || _seededTitles[channelId] != title)
+        {
+            program = new LiveTvProgram { Id = Guid.NewGuid(), Name = title };
+            _programItems[channelId] = program;
+            _seededTitles[channelId] = title;
+        }
+
+        return program;
     }
 
     private Task RunAsync()

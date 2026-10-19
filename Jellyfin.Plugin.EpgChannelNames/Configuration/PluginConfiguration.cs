@@ -38,6 +38,16 @@ public class PluginConfiguration : BasePluginConfiguration
     public string StreamTitleRegex { get; set; } = @":\s*(?<title>[^/]+?)\s*(?:/.*)?$";
 
     /// <summary>
+    /// Gets or sets a value indicating whether guide programs are renamed to the Dispatcharr game title too.
+    /// </summary>
+    public bool RenamePrograms { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets how many hours ahead programs are renamed.
+    /// </summary>
+    public int ProgramWindowHours { get; set; } = 12;
+
+    /// <summary>
     /// Gets or sets the default task interval in minutes, applied when the task triggers are first created.
     /// </summary>
     public int IntervalMinutes { get; set; } = 15;

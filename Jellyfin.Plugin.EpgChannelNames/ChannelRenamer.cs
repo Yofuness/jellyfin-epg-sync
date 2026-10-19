@@ -119,7 +119,7 @@ public class ChannelRenamer
             IncludeItemTypes = new[] { BaseItemKind.LiveTvChannel }
         }).OfType<LiveTvChannel>().ToList();
 
-        int matched = 0, renamed = 0, fromDispatcharr = 0, fromEpg = 0, nothingAiring = 0;
+        int matched = 0, renamed = 0, fromDispatcharr = 0, fromEpg = 0, nothingAiring = 0, programsRenamed = 0;
         for (var i = 0; i < channels.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -141,11 +141,13 @@ public class ChannelRenamer
 
             matched++;
             string? title;
+            var dispatcharrListed = false;
             if (channel.Number is not null && streamNames.TryGetValue(channel.Number, out var streamName))
             {
                 // Dispatcharr knows this channel: its stream name is authoritative. An empty game ("CA - NHL GAME 05 : ")
                 // means nothing tonight. Don't fall back to the EPG, which for these channels is Dispatcharr's own
                 // placeholder repeating the channel name.
+                dispatcharrListed = true;
                 title = ExtractStreamTitle(streamName, titleRegex);
                 if (title is not null)
                 {
@@ -176,6 +178,13 @@ public class ChannelRenamer
             var template = title is null ? config.NoProgramTemplate : config.NameTemplate;
             var newName = BuildName(template, title, original, channel.Number, match.Value);
 
+            if (dispatcharrListed && config.RenamePrograms)
+            {
+                // The guide/Programs page shows program titles, which for these channels are Dispatcharr's
+                // placeholder (often a days-old channel name). Make them say the same as the channel.
+                programsRenamed += await RenameProgramsAsync(channel, title ?? newName, now, config.ProgramWindowHours, cancellationToken).ConfigureAwait(false);
+            }
+
             if (newName == channel.Name && applied == newName)
             {
                 continue;
@@ -191,14 +200,15 @@ public class ChannelRenamer
         progress.Report(100);
 
         _logger.LogInformation(
-            "Checked {Total} channels: {Matched} matched '{Regex}', {Renamed} renamed; titles from Dispatcharr {FromDispatcharr}, from EPG {FromEpg}, nothing airing {NothingAiring}",
+            "Checked {Total} channels: {Matched} matched '{Regex}', {Renamed} renamed; titles from Dispatcharr {FromDispatcharr}, from EPG {FromEpg}, nothing airing {NothingAiring}; {ProgramsRenamed} programs renamed",
             channels.Count,
             matched,
             config.ChannelNameRegex,
             renamed,
             fromDispatcharr,
             fromEpg,
-            nothingAiring);
+            nothingAiring,
+            programsRenamed);
         if (matched == 0 && channels.Count > 0)
         {
             _logger.LogWarning("No Live TV channels matched '{Regex}'. Check 'Channels to rename' in the plugin settings", config.ChannelNameRegex);
@@ -208,6 +218,32 @@ public class ChannelRenamer
         {
             _logger.LogWarning("Dispatcharr returned no streams for channels matching '{Regex}'", config.ChannelNameRegex);
         }
+    }
+
+    private async Task<int> RenameProgramsAsync(LiveTvChannel channel, string programName, DateTime now, int windowHours, CancellationToken cancellationToken)
+    {
+        var programs = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
+            ChannelIds = new[] { channel.Id },
+            MinEndDate = now,
+            MaxStartDate = now.AddHours(Math.Max(0, windowHours))
+        });
+
+        var count = 0;
+        foreach (var program in programs)
+        {
+            if (program.Name == programName)
+            {
+                continue;
+            }
+
+            program.Name = programName;
+            await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+            count++;
+        }
+
+        return count;
     }
 
     private async Task<IReadOnlyDictionary<string, string>> GetStreamNamesAsync(PluginConfiguration config, Regex filter, CancellationToken cancellationToken)
