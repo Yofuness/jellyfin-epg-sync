@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.EpgChannelNames.Configuration;
+using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
@@ -25,6 +28,7 @@ public class ChannelRenamer
 
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ChannelRenamer> _logger;
+    private readonly IDispatcharrClient _dispatcharr;
     private readonly Func<PluginConfiguration> _getConfig;
 
     /// <summary>
@@ -32,8 +36,9 @@ public class ChannelRenamer
     /// </summary>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
-    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger)
-        : this(libraryManager, logger, () => Plugin.Instance!.Configuration)
+    /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
+    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr)
+        : this(libraryManager, logger, dispatcharr, () => Plugin.Instance!.Configuration)
     {
     }
 
@@ -42,11 +47,13 @@ public class ChannelRenamer
     /// </summary>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
+    /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
     /// <param name="getConfig">Returns the current configuration.</param>
-    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, Func<PluginConfiguration> getConfig)
+    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, Func<PluginConfiguration> getConfig)
     {
         _libraryManager = libraryManager;
         _logger = logger;
+        _dispatcharr = dispatcharr;
         _getConfig = getConfig;
     }
 
@@ -71,6 +78,29 @@ public class ChannelRenamer
     }
 
     /// <summary>
+    /// Extracts the game title from a Dispatcharr stream name.
+    /// </summary>
+    /// <param name="streamName">Stream name, e.g. "CA - NHL GAME 01 : DUCKS @ RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK".</param>
+    /// <param name="titleRegex">Regex; the "title" group is used if present, else the whole match.</param>
+    /// <returns>The title, or null when the stream has no game (e.g. "CA - NHL GAME 05 : ").</returns>
+    internal static string? ExtractStreamTitle(string? streamName, Regex titleRegex)
+    {
+        if (string.IsNullOrWhiteSpace(streamName))
+        {
+            return null;
+        }
+
+        var match = titleRegex.Match(streamName);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var title = (match.Groups["title"].Success ? match.Groups["title"].Value : match.Value).Trim();
+        return title.Length == 0 ? null : title;
+    }
+
+    /// <summary>
     /// Renames every matching channel once.
     /// </summary>
     /// <param name="progress">Progress reporter, 0 to 100.</param>
@@ -81,6 +111,8 @@ public class ChannelRenamer
         var config = _getConfig();
         var filter = new Regex(config.ChannelNameRegex, RegexOptions.IgnoreCase);
         var now = DateTime.UtcNow;
+        var streamNames = await GetStreamNamesAsync(config, filter, cancellationToken).ConfigureAwait(false);
+        var titleRegex = new Regex(config.StreamTitleRegex, RegexOptions.IgnoreCase);
 
         var channels = _libraryManager.GetItemList(new InternalItemsQuery
         {
@@ -106,17 +138,21 @@ public class ChannelRenamer
                 continue;
             }
 
-            var program = _libraryManager.GetItemList(new InternalItemsQuery
+            // Dispatcharr's stream name carries the current matchup even when the EPG is empty, so prefer it.
+            var title = channel.Number is not null && streamNames.TryGetValue(channel.Number, out var streamName)
+                ? ExtractStreamTitle(streamName, titleRegex)
+                : null;
+            title ??= _libraryManager.GetItemList(new InternalItemsQuery
             {
                 IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
                 ChannelIds = new[] { channel.Id },
                 MaxStartDate = now,
                 MinEndDate = now,
                 Limit = 1
-            }) is { Count: > 0 } programs ? programs[0] : null;
+            }) is { Count: > 0 } programs ? programs[0].Name : null;
 
-            var template = program is null ? config.NoProgramTemplate : config.NameTemplate;
-            var newName = BuildName(template, program?.Name, original, channel.Number, match.Value);
+            var template = title is null ? config.NoProgramTemplate : config.NameTemplate;
+            var newName = BuildName(template, title, original, channel.Number, match.Value);
 
             if (newName == channel.Name && applied == newName)
             {
@@ -130,5 +166,25 @@ public class ChannelRenamer
         }
 
         progress.Report(100);
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> GetStreamNamesAsync(PluginConfiguration config, Regex filter, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(config.DispatcharrUrl))
+        {
+            return new Dictionary<string, string>();
+        }
+
+        try
+        {
+            return await _dispatcharr.GetStreamNamesByChannelNumberAsync(config.DispatcharrUrl, config.DispatcharrApiKey, filter, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or UriFormatException
+            || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            // Dispatcharr being down should not stop EPG-based renaming.
+            _logger.LogWarning(ex, "Could not read stream names from Dispatcharr at {Url}; falling back to EPG", config.DispatcharrUrl);
+            return new Dictionary<string, string>();
+        }
     }
 }

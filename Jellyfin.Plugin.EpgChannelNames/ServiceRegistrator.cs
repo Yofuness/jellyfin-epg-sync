@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        serviceCollection.AddSingleton<IDispatcharrClient, DispatcharrClient>();
         serviceCollection.AddSingleton<ChannelRenamer>();
         serviceCollection.AddHostedService<GuideRefreshListener>();
     }

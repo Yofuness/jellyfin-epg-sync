@@ -24,9 +24,17 @@ Publish a GitHub release with a tag like `v1.0.1`. The Release workflow runs the
 
 ## Configure
 Dashboard → Plugins → EPG Channel Names:
-- **Channels to rename**: regex on the original name. Default `^NHL GAME \d+`. Other channels are untouched.
+- **Channels to rename**: regex on the original name. Default `NHL GAME \d+` (also matches `CA - NHL GAME 01`). Other channels are untouched.
 - **Name while airing**: default `{prefix} · {program}`. Tokens: `{program}`, `{prefix}` (the regex match), `{original}`, `{number}`.
 - **Name when nothing is airing**: default `{prefix}`.
+
+### Dispatcharr (recommended for game channels)
+Many providers ship game channels with an empty or stale EPG; the matchup only lives in the stream name (`CA - NHL GAME 01 : DUCKS @ RANGERS OCT 19 – 7:00 PM ET`). Connect Dispatcharr and the plugin reads it from there:
+1. In Dispatcharr, create an API key for your user.
+2. In the plugin settings, set **Dispatcharr URL** (e.g. `http://localhost:9191`) and **API key**, then Save.
+3. Optional: **Game title regex** controls what part of the stream name is used. Default: text after `:` up to `/`.
+
+Channels are matched by channel number. If Dispatcharr is unreachable, the plugin falls back to the EPG.
 
 Run now: Dashboard → Scheduled Tasks → Live TV → "Rename channels from EPG".
 
@@ -35,7 +43,7 @@ Run now: Dashboard → Scheduled Tasks → Live TV → "Rename channels from EPG
 - `./test.sh --integration`: also runs the plugin in a real Jellyfin 10.11 container
 
 ## Requirement
-Each game channel needs EPG data in Dispatcharr (a real EPG source or a Dispatcharr dummy EPG that puts the matchup in the program title). No program = no new name.
+Either Dispatcharr connected (above), or EPG data for each game channel. With neither, the channel keeps the "nothing airing" name.
 
 ## License
 GPL-3.0. See [LICENSE](LICENSE).

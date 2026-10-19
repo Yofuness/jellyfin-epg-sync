@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.EpgChannelNames.Configuration;
+using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
@@ -25,6 +28,8 @@ public class ChannelRenamerTests
     private readonly List<LiveTvChannel> _channels = new();
     private readonly Dictionary<Guid, string> _programs = new();
     private readonly PluginConfiguration _config = new();
+    private readonly Mock<IDispatcharrClient> _dispatcharr = new();
+    private readonly Dictionary<string, string> _streamNames = new();
 
     public ChannelRenamerTests()
     {
@@ -36,6 +41,9 @@ public class ChannelRenamerTests
             .Returns((InternalItemsQuery q) => _programs.TryGetValue(q.ChannelIds.Single(), out var title)
                 ? new List<BaseItem> { new LiveTvProgram { Name = title } }
                 : new List<BaseItem>());
+        _dispatcharr
+            .Setup(d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => _streamNames);
         BaseItem.LibraryManager = _library.Object;
     }
 
@@ -112,6 +120,78 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task DefaultRegex_MatchesProviderPrefixedNames()
+    {
+        var channel = AddChannel("CA - NHL GAME 01", "Game");
+
+        await RunAsync();
+
+        Assert.Equal("NHL GAME 01 · Game", channel.Name);
+    }
+
+    [Fact]
+    public async Task Dispatcharr_StreamTitleBeatsEpg()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 01", "Stale EPG title", number: "16");
+        _streamNames["16"] = "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK";
+
+        await RunAsync();
+
+        Assert.Equal("NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET", channel.Name);
+    }
+
+    [Fact]
+    public async Task Dispatcharr_EmptyStream_FallsBackToEpg()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 05", "EPG Game", number: "12");
+        _streamNames["12"] = "CA - NHL GAME 05 : ";
+
+        await RunAsync();
+
+        Assert.Equal("NHL GAME 05 · EPG Game", channel.Name);
+    }
+
+    [Fact]
+    public async Task Dispatcharr_EmptyStreamAndNoEpg_UsesNoProgramTemplate()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 05", program: null, number: "12");
+        _streamNames["12"] = "CA - NHL GAME 05 : ";
+
+        await RunAsync();
+
+        Assert.Equal("NHL GAME 05", channel.Name);
+    }
+
+    [Fact]
+    public async Task Dispatcharr_Unreachable_FallsBackToEpg()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _dispatcharr
+            .Setup(d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("connection refused"));
+        var channel = AddChannel("CA - NHL GAME 01", "EPG Game", number: "16");
+
+        await RunAsync();
+
+        Assert.Equal("NHL GAME 01 · EPG Game", channel.Name);
+    }
+
+    [Fact]
+    public async Task Dispatcharr_NotConfigured_IsNeverCalled()
+    {
+        AddChannel("CA - NHL GAME 01", "Game", number: "16");
+
+        await RunAsync();
+
+        _dispatcharr.Verify(
+            d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()),
+            Times.Never());
+    }
+
+    [Fact]
     public async Task Regex_IsCaseInsensitive()
     {
         var channel = AddChannel("nhl game 03 x vs y", "Game");
@@ -138,7 +218,7 @@ public class ChannelRenamerTests
         AddChannel("NHL GAME 01 A vs B", "Game");
         var reports = new List<double>();
 
-        await new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, () => _config)
+        await new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, () => _config)
             .RunAsync(new SyncProgress(reports), CancellationToken.None);
 
         Assert.Equal(100, reports[^1]);
@@ -152,7 +232,7 @@ public class ChannelRenamerTests
         await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, () => _config)
+            () => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, () => _config)
                 .RunAsync(new SyncProgress(new List<double>()), cts.Token));
     }
 
@@ -169,7 +249,7 @@ public class ChannelRenamerTests
     }
 
     private Task RunAsync()
-        => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, () => _config)
+        => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, () => _config)
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
     private void VerifySaved(LiveTvChannel channel, Times times)

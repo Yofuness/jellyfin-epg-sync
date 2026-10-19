@@ -13,6 +13,7 @@ Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bi
 `echo '{"action":"published","release":{"tag_name":"v1.0.0"}}' > /tmp/ev.json && act release -e /tmp/ev.json --bind -P ubuntu-latest=catthehacker/ubuntu:act-latest`
 
 ## Layout
+- `Dispatcharr/`: `IDispatcharrClient` + `DispatcharrClient`. Reads `GET /api/channels/channels/` (unpaginated array, `channel_number` is a float like `220.0`) and `GET /api/channels/channels/{id}/streams/` with the `X-API-Key` header. Results are keyed by channel number formatted like the M3U `tvg-chno` (`220`).
 - `ChannelRenamer.cs`: core logic. Queries `LiveTvChannel`, then the airing `LiveTvProgram`, applies the name template.
 - `RenameChannelsTask.cs`: scheduled task (startup + interval). Key `EpgChannelNamesRename`.
 - `GuideRefreshListener.cs`: reruns the task when Jellyfin's `RefreshGuide` task completes.
@@ -20,6 +21,8 @@ Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bi
 - `Configuration/`: settings class + embedded `configPage.html`. Plugin GUID `4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64` (keep in sync with `Plugin.cs`, the config page, and `build.sh`).
 
 ## Key behavior (non-obvious)
+- Title source order: Dispatcharr stream name (via `StreamTitleRegex`), then the EPG program airing now, then `NoProgramTemplate`. Real-world providers often have empty or stale EPG for game channels; only the stream name is fresh after each M3U refresh.
+- Dispatcharr errors (HTTP, JSON, bad URL, timeout) are logged and fall back to the EPG. They never fail the task.
 - Jellyfin resets channel names to the M3U name on every guide refresh. The plugin stores `EpgChannelNames.Original` and `EpgChannelNames.Applied` in `channel.ProviderIds`. Any name different from `Applied` counts as a fresh original.
 - The regex matches against the original name, never the renamed one.
 - Target ABI 10.11. `Jellyfin.Controller`/`Jellyfin.Model` are pinned to 10.11.0, the oldest 10.11. Building against a newer patch (e.g. 10.11.11) fails to load on older servers ("Could not load MediaBrowser.Common, Version=10.11.11.0"). Never use a wildcard. Jellyfin 12.x needs a separate build.

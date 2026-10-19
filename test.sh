@@ -20,10 +20,13 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$ROOT":/src -w /src/Jell
 
 WORK="$(mktemp -d)"
 NAME="epgcn-it-$$"
+NET="epgcn-net-$$"
+FAKE="epgcn-dispatcharr-$$"
 cleanup() {
-  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  docker rm -f "$NAME" "$FAKE" >/dev/null 2>&1 || true
+  docker network rm "$NET" >/dev/null 2>&1 || true
   # Jellyfin writes as root inside the container; delete through a container too.
-  docker run --rm -v "$WORK":/w alpine rm -rf /w/config /w/tv >/dev/null 2>&1 || true
+  docker run --rm -v "$WORK":/w alpine rm -rf /w/config /w/tv /w/fake >/dev/null 2>&1 || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -51,7 +54,20 @@ XML
 }
 write_epg "Maple Leafs vs Canadiens"
 
-docker run -d --name "$NAME" -p "$PORT:8096" -v "$WORK/config":/config -v "$WORK/tv":/tv "$JF_IMAGE" >/dev/null
+# Fake Dispatcharr: static JSON served at the real API paths (index.html per directory).
+mkdir -p "$WORK/fake/api/channels/channels/42/streams"
+cat > "$WORK/fake/api/channels/channels/index.html" <<'JSON'
+[{"id": 42, "name": "CA - NHL GAME 01", "channel_number": 101.0, "streams": [7]},
+ {"id": 43, "name": "CBC News", "channel_number": 5.0, "streams": [8]}]
+JSON
+cat > "$WORK/fake/api/channels/channels/42/streams/index.html" <<'JSON'
+[{"id": 7, "name": "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK"}]
+JSON
+docker network create "$NET" >/dev/null
+docker run -d --name "$FAKE" --network "$NET" --network-alias dispatcharr -v "$WORK/fake":/srv:ro -w /srv python:3.12-alpine \
+  python -m http.server 8000 >/dev/null
+
+docker run -d --name "$NAME" --network "$NET" -p "$PORT:8096" -v "$WORK/config":/config -v "$WORK/tv":/tv "$JF_IMAGE" >/dev/null
 J="http://localhost:$PORT"
 # /System/Info/Public answers before the startup wizard endpoints are ready.
 for _ in $(seq 90); do curl -sf "$J/Startup/Configuration" >/dev/null && break; sleep 2; done
@@ -101,6 +117,28 @@ write_epg "Oilers vs Flames"
 # Jellyfin caches the XMLTV file; drop the cache so it rereads the new guide.
 docker exec "$NAME" sh -c 'rm -rf /cache/xmltv/*'
 refresh_and_wait
+expect "NHL GAME 01 · Oilers vs Flames"
+
+# Dispatcharr stream names win over the EPG.
+PLUGIN_ID=4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64
+RENAME_ID=$(curl -sf "$J/ScheduledTasks" -H "$A" | python3 -c 'import json,sys;print(next(t["Id"] for t in json.load(sys.stdin) if t["Key"]=="EpgChannelNamesRename"))')
+set_dispatcharr() {
+  curl -sf "$J/Plugins/$PLUGIN_ID/Configuration" -H "$A" \
+    | python3 -c 'import json,sys;c=json.load(sys.stdin);c["DispatcharrUrl"]=sys.argv[1];c["DispatcharrApiKey"]="test-key";print(json.dumps(c))' "$1" \
+    | curl -sf -X POST "$J/Plugins/$PLUGIN_ID/Configuration" -H "$H" -H "$A" -d @- >/dev/null
+}
+rename_and_wait() {
+  curl -sf -X POST "$J/ScheduledTasks/Running/$RENAME_ID" -H "$A" >/dev/null
+  sleep 4
+}
+set_dispatcharr "http://dispatcharr:8000"
+rename_and_wait
+expect "NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET"
+expect "CBC News"
+
+# Dispatcharr down: fall back to the EPG instead of failing.
+docker stop "$FAKE" >/dev/null
+rename_and_wait
 expect "NHL GAME 01 · Oilers vs Flames"
 
 echo "Integration test passed"

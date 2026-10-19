@@ -8,7 +8,7 @@
       <form id="EpgChannelNamesConfigForm">
         <div class="inputContainer">
           <input is="emby-input" type="text" id="ChannelNameRegex" label="Channels to rename (regex on original name)" />
-          <div class="fieldDescription">Example: <code>^NHL GAME \d+</code> or <code>^(NHL|NBA) GAME \d+</code></div>
+          <div class="fieldDescription">Example: <code>NHL GAME \d+</code> or <code>(NHL|NBA) GAME \d+</code></div>
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="NameTemplate" label="Name while a program is airing" />
@@ -16,6 +16,19 @@
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="NoProgramTemplate" label="Name when nothing is airing" />
+        </div>
+        <h3>Dispatcharr (optional)</h3>
+        <div class="fieldDescription">When set, the game title is read from Dispatcharr's stream names, which carry tonight's matchup even when the EPG is empty. Falls back to the EPG.</div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="DispatcharrUrl" label="Dispatcharr URL" placeholder="http://localhost:9191" />
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="password" id="DispatcharrApiKey" label="Dispatcharr API key" autocomplete="off" />
+          <div class="fieldDescription">Create one in Dispatcharr under your user's settings (API keys).</div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="StreamTitleRegex" label="Game title regex (on stream name)" />
+          <div class="fieldDescription">Uses the <code>title</code> group. Default takes the text after <code>:</code> up to <code>/</code>.</div>
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="number" id="IntervalMinutes" min="1" label="Default refresh interval (minutes, applies on first install)" />
@@ -27,7 +40,7 @@
   <script type="text/javascript">
     (function () {
       var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
-      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'IntervalMinutes'];
+      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'StreamTitleRegex', 'IntervalMinutes'];
       var page = document.querySelector('#EpgChannelNamesConfigPage');
       page.addEventListener('pageshow', function () {
         Dashboard.showLoadingMsg();
