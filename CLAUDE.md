@@ -22,6 +22,8 @@ Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bi
 
 ## Key behavior (non-obvious)
 - Title source order: Dispatcharr stream name (via `StreamTitleRegex`), then the EPG program airing now, then `NoProgramTemplate`. Real-world providers often have empty or stale EPG for game channels; only the stream name is fresh after each M3U refresh.
+- When Dispatcharr lists a channel, its stream name is authoritative: an empty game ("CA - NHL GAME 05 : ") means nothing airing, with NO EPG fallback. Dispatcharr's placeholder EPG for these channels just repeats the channel name. EPG is used only when Dispatcharr is off, down, or does not list the channel.
+- Every run logs a summary ("Checked N channels: M matched ..."), and warns when nothing matches the regex.
 - Dispatcharr errors (HTTP, JSON, bad URL, timeout) are logged and fall back to the EPG. They never fail the task.
 - Jellyfin resets channel names to the M3U name on every guide refresh. The plugin stores `EpgChannelNames.Original` and `EpgChannelNames.Applied` in `channel.ProviderIds`. Any name different from `Applied` counts as a fresh original.
 - The regex matches against the original name, never the renamed one.

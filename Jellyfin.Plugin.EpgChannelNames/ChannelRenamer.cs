@@ -119,6 +119,7 @@ public class ChannelRenamer
             IncludeItemTypes = new[] { BaseItemKind.LiveTvChannel }
         }).OfType<LiveTvChannel>().ToList();
 
+        int matched = 0, renamed = 0, fromDispatcharr = 0, fromEpg = 0, nothingAiring = 0;
         for (var i = 0; i < channels.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -138,18 +139,39 @@ public class ChannelRenamer
                 continue;
             }
 
-            // Dispatcharr's stream name carries the current matchup even when the EPG is empty, so prefer it.
-            var title = channel.Number is not null && streamNames.TryGetValue(channel.Number, out var streamName)
-                ? ExtractStreamTitle(streamName, titleRegex)
-                : null;
-            title ??= _libraryManager.GetItemList(new InternalItemsQuery
+            matched++;
+            string? title;
+            if (channel.Number is not null && streamNames.TryGetValue(channel.Number, out var streamName))
             {
-                IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
-                ChannelIds = new[] { channel.Id },
-                MaxStartDate = now,
-                MinEndDate = now,
-                Limit = 1
-            }) is { Count: > 0 } programs ? programs[0].Name : null;
+                // Dispatcharr knows this channel: its stream name is authoritative. An empty game ("CA - NHL GAME 05 : ")
+                // means nothing tonight. Don't fall back to the EPG, which for these channels is Dispatcharr's own
+                // placeholder repeating the channel name.
+                title = ExtractStreamTitle(streamName, titleRegex);
+                if (title is not null)
+                {
+                    fromDispatcharr++;
+                }
+            }
+            else
+            {
+                title = _libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
+                    ChannelIds = new[] { channel.Id },
+                    MaxStartDate = now,
+                    MinEndDate = now,
+                    Limit = 1
+                }) is { Count: > 0 } programs ? programs[0].Name : null;
+                if (title is not null)
+                {
+                    fromEpg++;
+                }
+            }
+
+            if (title is null)
+            {
+                nothingAiring++;
+            }
 
             var template = title is null ? config.NoProgramTemplate : config.NameTemplate;
             var newName = BuildName(template, title, original, channel.Number, match.Value);
@@ -159,6 +181,7 @@ public class ChannelRenamer
                 continue;
             }
 
+            renamed++;
             _logger.LogInformation("Renaming channel '{Old}' -> '{New}'", channel.Name, newName);
             channel.Name = newName;
             channel.ProviderIds[AppliedKey] = newName;
@@ -166,6 +189,25 @@ public class ChannelRenamer
         }
 
         progress.Report(100);
+
+        _logger.LogInformation(
+            "Checked {Total} channels: {Matched} matched '{Regex}', {Renamed} renamed; titles from Dispatcharr {FromDispatcharr}, from EPG {FromEpg}, nothing airing {NothingAiring}",
+            channels.Count,
+            matched,
+            config.ChannelNameRegex,
+            renamed,
+            fromDispatcharr,
+            fromEpg,
+            nothingAiring);
+        if (matched == 0 && channels.Count > 0)
+        {
+            _logger.LogWarning("No Live TV channels matched '{Regex}'. Check 'Channels to rename' in the plugin settings", config.ChannelNameRegex);
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.DispatcharrUrl) && matched > 0 && streamNames.Count == 0)
+        {
+            _logger.LogWarning("Dispatcharr returned no streams for channels matching '{Regex}'", config.ChannelNameRegex);
+        }
     }
 
     private async Task<IReadOnlyDictionary<string, string>> GetStreamNamesAsync(PluginConfiguration config, Regex filter, CancellationToken cancellationToken)

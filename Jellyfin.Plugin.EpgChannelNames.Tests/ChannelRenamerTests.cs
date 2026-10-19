@@ -142,15 +142,60 @@ public class ChannelRenamerTests
     }
 
     [Fact]
-    public async Task Dispatcharr_EmptyStream_FallsBackToEpg()
+    public async Task Dispatcharr_EmptyStream_IgnoresPlaceholderEpg()
     {
+        // Dispatcharr's dummy EPG just repeats the channel name; it must not become the title.
         _config.DispatcharrUrl = "http://dispatcharr:9191";
-        var channel = AddChannel("CA - NHL GAME 05", "EPG Game", number: "12");
-        _streamNames["12"] = "CA - NHL GAME 05 : ";
+        var channel = AddChannel("CA - NHL GAME 07", "CA - NHL GAME 07", number: "10");
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
 
         await RunAsync();
 
-        Assert.Equal("NHL GAME 05 · EPG Game", channel.Name);
+        Assert.Equal("NHL GAME 07", channel.Name);
+    }
+
+    [Fact]
+    public async Task Dispatcharr_ChannelNotListed_FallsBackToEpg()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 01", "EPG Game", number: "99");
+
+        await RunAsync();
+
+        Assert.Equal("NHL GAME 01 · EPG Game", channel.Name);
+    }
+
+    [Fact]
+    public async Task Summary_IsLoggedEveryRun()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        AddChannel("CA - NHL GAME 01", "x", number: "16");
+        AddChannel("CA - NHL GAME 07", "x", number: "10");
+        AddChannel("CBC News", "The National", number: "5");
+        _streamNames["16"] = "CA - NHL GAME 01 : DUCKS @ RANGERS";
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
+        var logger = new ListLogger();
+
+        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, () => _config)
+            .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
+
+        Assert.Contains(
+            "Checked 3 channels: 2 matched 'NHL GAME \\d+', 2 renamed; titles from Dispatcharr 1, from EPG 0, nothing airing 1",
+            logger.Messages);
+        Assert.DoesNotContain(logger.Messages, m => m.StartsWith("No Live TV channels matched", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task NoMatches_LogsWarning()
+    {
+        _config.ChannelNameRegex = @"^NHL GAME \d+";
+        AddChannel("CA - NHL GAME 01", "x");
+        var logger = new ListLogger();
+
+        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, () => _config)
+            .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
+
+        Assert.Contains(logger.Warnings, m => m.StartsWith("No Live TV channels matched '^NHL GAME \\d+'", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -256,6 +301,28 @@ public class ChannelRenamerTests
         => _library.Verify(
             l => l.UpdateItemAsync(channel, It.IsAny<BaseItem>(), ItemUpdateType.MetadataEdit, It.IsAny<CancellationToken>()),
             times);
+
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger<ChannelRenamer>
+    {
+        public List<string> Messages { get; } = new();
+
+        public List<string> Warnings { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            var message = formatter(state, exception);
+            Messages.Add(message);
+            if (logLevel == Microsoft.Extensions.Logging.LogLevel.Warning)
+            {
+                Warnings.Add(message);
+            }
+        }
+    }
 
     // Progress<T> posts asynchronously; this records synchronously so asserts see every report.
     private sealed class SyncProgress(List<double> reports) : IProgress<double>
