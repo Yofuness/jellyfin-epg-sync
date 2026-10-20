@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.EpgChannelNames.Configuration;
 using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
+using Jellyfin.Plugin.EpgChannelNames.Teams;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
@@ -32,10 +33,15 @@ public partial class ChannelRenamer
     // and a changed channel logo is followed.
     private const string LogoKey = "EpgChannelNames.Logo";
 
+    // The EPG title before the plugin put team names in it, and the title it set (a guide refresh resets Name).
+    private const string TitleOriginalKey = "EpgChannelNames.TitleOriginal";
+    private const string TitleAppliedKey = "EpgChannelNames.TitleApplied";
+
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ChannelRenamer> _logger;
     private readonly IDispatcharrClient _dispatcharr;
     private readonly IItemRepository _itemRepository;
+    private readonly ITeamDatabase? _teams;
     private readonly Func<PluginConfiguration> _getConfig;
 
     /// <summary>
@@ -45,8 +51,9 @@ public partial class ChannelRenamer
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
     /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
     /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
-    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository)
-        : this(libraryManager, logger, dispatcharr, itemRepository, () => Plugin.Instance!.Configuration)
+    /// <param name="teams">Instance of the <see cref="ITeamDatabase"/> interface.</param>
+    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, ITeamDatabase teams)
+        : this(libraryManager, logger, dispatcharr, itemRepository, () => Plugin.Instance!.Configuration, teams)
     {
     }
 
@@ -58,8 +65,10 @@ public partial class ChannelRenamer
     /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
     /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
     /// <param name="getConfig">Returns the current configuration.</param>
-    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, Func<PluginConfiguration> getConfig)
+    /// <param name="teams">The team database, or null for none.</param>
+    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, Func<PluginConfiguration> getConfig, ITeamDatabase? teams = null)
     {
+        _teams = teams;
         _libraryManager = libraryManager;
         _logger = logger;
         _dispatcharr = dispatcharr;
@@ -127,6 +136,7 @@ public partial class ChannelRenamer
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var now = DateTime.UtcNow;
+        var teams = config.UseTeamNames && _teams is not null ? await _teams.GetTeamsAsync(cancellationToken).ConfigureAwait(false) : null;
 
         foreach (var line in rules.InvalidLines)
         {
@@ -210,7 +220,7 @@ public partial class ChannelRenamer
                     // Regular channel: keep its name and real EPG; only sort its programs into a Programs-page row.
                     // Placeholders (title = the channel's own name) and ignored titles never get a row.
                     var names = new[] { original, d.Name, d.StreamName };
-                    await ApplyCategoryAsync(channel, category, names, ignoredTitles, config.UseChannelLogo, config.ProgramWindowHours, now, stats, cancellationToken).ConfigureAwait(false);
+                    await ApplyCategoryAsync(channel, category, names, ignoredTitles, config, teams, now, stats, cancellationToken).ConfigureAwait(false);
                 }
             }
             else if (filterMatch is { Success: true })
@@ -243,7 +253,7 @@ public partial class ChannelRenamer
         progress.Report(100);
 
         _logger.LogInformation(
-            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now, {StaleEvents} stale ignored), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized, {Placeholders} placeholders skipped",
+            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now, {StaleEvents} stale ignored), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized, {Retitled} retitled with teams, {Placeholders} placeholders skipped",
             channels.Count,
             stats.Listed,
             stats.Events,
@@ -254,6 +264,7 @@ public partial class ChannelRenamer
             stats.ProgramsUpdated,
             stats.ProgramsRemoved,
             stats.ProgramsCategorized,
+            stats.ProgramsRetitled,
             stats.PlaceholdersSkipped);
         if (dispatcharr is not null && dispatcharr.Count == 0)
         {
@@ -434,8 +445,8 @@ public partial class ChannelRenamer
         ProgramCategory? category,
         string?[] channelNames,
         IReadOnlyCollection<string> ignoredTitles,
-        bool useChannelLogo,
-        int windowHours,
+        PluginConfiguration config,
+        IReadOnlyList<Team>? teams,
         DateTime now,
         RunStats stats,
         CancellationToken cancellationToken)
@@ -445,21 +456,30 @@ public partial class ChannelRenamer
             IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
             ChannelIds = new[] { channel.Id },
             MinEndDate = now,
-            MaxStartDate = now.AddHours(Math.Max(0, windowHours))
+            MaxStartDate = now.AddHours(Math.Max(0, config.ProgramWindowHours))
         }).OfType<LiveTvProgram>();
 
         foreach (var program in programs)
         {
-            var placeholder = category is not null && IsPlaceholder(program.Name, channelNames, ignoredTitles);
-            if (placeholder)
+            // Checked against the EPG title, not one the plugin set.
+            var epgTitle = program.ProviderIds.GetValueOrDefault(TitleOriginalKey) ?? program.Name;
+            var placeholder = IsPlaceholder(epgTitle, channelNames, ignoredTitles);
+            if (placeholder && category is not null)
             {
                 stats.PlaceholdersSkipped++;
             }
 
             // Apply(null) also undoes tags an earlier version put on placeholders.
             var categoryChanged = CategoryRules.Apply(program, placeholder ? null : category);
-            var logoChanged = useChannelLogo && ApplyChannelLogo(program, channel);
-            if (!categoryChanged && !logoChanged)
+            var isSports = category == ProgramCategory.Sports || program.IsSports;
+            var titleChanged = ApplyTeamTitle(program, placeholder ? null : teams, isSports);
+            if (titleChanged)
+            {
+                stats.ProgramsRetitled++;
+            }
+
+            var logoChanged = config.UseChannelLogo && ApplyChannelLogo(program, channel);
+            if (!categoryChanged && !logoChanged && !titleChanged)
             {
                 continue;
             }
@@ -468,6 +488,50 @@ public partial class ChannelRenamer
             await SaveImagesIfChangedAsync(program, logoChanged).ConfigureAwait(false);
             stats.ProgramsCategorized++;
         }
+    }
+
+    /// <summary>
+    /// Puts the two teams found in a program's title and description into its title, or restores the EPG title.
+    /// </summary>
+    /// <param name="program">The program.</param>
+    /// <param name="teams">The team database, or null to restore the EPG title.</param>
+    /// <param name="isSports">Whether the program or its channel is sports.</param>
+    /// <returns>Whether the title changed.</returns>
+    internal static bool ApplyTeamTitle(LiveTvProgram program, IReadOnlyList<Team>? teams, bool isSports)
+    {
+        program.ProviderIds.TryGetValue(TitleAppliedKey, out var applied);
+        if (applied is not null && program.Name != applied)
+        {
+            // A guide refresh wrote a new EPG title.
+            program.ProviderIds.Remove(TitleOriginalKey);
+            program.ProviderIds.Remove(TitleAppliedKey);
+            applied = null;
+        }
+
+        var epgTitle = applied is null ? program.Name : program.ProviderIds.GetValueOrDefault(TitleOriginalKey) ?? program.Name;
+        var title = teams is null ? null : TeamMatcher.BuildTitle(epgTitle, program.Overview, isSports, teams);
+        if (title is null)
+        {
+            if (applied is null)
+            {
+                return false;
+            }
+
+            program.Name = epgTitle;
+            program.ProviderIds.Remove(TitleOriginalKey);
+            program.ProviderIds.Remove(TitleAppliedKey);
+            return true;
+        }
+
+        if (title == applied)
+        {
+            return false;
+        }
+
+        program.ProviderIds[TitleOriginalKey] = epgTitle;
+        program.ProviderIds[TitleAppliedKey] = title;
+        program.Name = title;
+        return true;
     }
 
     // Jellyfin can keep a channel logo as a remote URL and download it only when viewed. Programs reuse the
@@ -551,6 +615,8 @@ public partial class ChannelRenamer
         public int ProgramsCategorized { get; set; }
 
         public int PlaceholdersSkipped { get; set; }
+
+        public int ProgramsRetitled { get; set; }
 
         public int StaleEvents { get; set; }
     }

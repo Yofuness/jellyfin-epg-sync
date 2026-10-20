@@ -39,6 +39,7 @@ cat > "$WORK/config/plugins/configurations/Jellyfin.Plugin.EpgChannelNames.xml" 
 <?xml version="1.0" encoding="utf-8"?>
 <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <ChannelNameRegex>NHL GAME \d\d</ChannelNameRegex>
+  <TeamDatabaseUrl>http://dispatcharr:8000/espn/</TeamDatabaseUrl>
 </PluginConfiguration>
 XML
 cp "$ROOT/Jellyfin.Plugin.EpgChannelNames/bin/Release/net9.0/Jellyfin.Plugin.EpgChannelNames.dll" "$WORK/config/plugins/EpgChannelNames/"
@@ -56,6 +57,8 @@ http://127.0.0.1/none30.ts
 http://127.0.0.1/none31.ts
 #EXTINF:-1 tvg-id="gaatv4" tvg-chno="192",UK - GAATV 004
 http://127.0.0.1/none192.ts
+#EXTINF:-1 tvg-id="premier2" tvg-chno="140",UK - PREMIER SPORTS 2 SD
+http://127.0.0.1/none140.ts
 #EXTINF:-1 tvg-id="news" tvg-chno="5",CBC News
 http://127.0.0.1/none2.ts
 M3U
@@ -70,6 +73,7 @@ write_epg() {
 <channel id="history"><display-name>CA - HISTORY HD</display-name></channel>
 <channel id="stingray"><display-name>CA - STINGRAY NATURE HD</display-name></channel>
 <channel id="gaatv4"><display-name>UK - GAATV 004</display-name></channel>
+<channel id="premier2"><display-name>UK - PREMIER SPORTS 2 SD</display-name></channel>
 <channel id="news"><display-name>CBC News</display-name></channel>
 <programme start="$a +0000" stop="$b +0000" channel="nhl01"><title>$1</title></programme>
 <programme start="$b +0000" stop="$c +0000" channel="nhl01"><title>Later placeholder</title><desc>Early Bird Special - Coffee not included</desc></programme>
@@ -78,6 +82,7 @@ write_epg() {
 <programme start="$a +0000" stop="$b +0000" channel="history"><title>Pawn Stars</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="stingray"><title>CA - STINGRAY NATURE</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="gaatv4"><title>UK - GAATV 004</title></programme>
+<programme start="$a +0000" stop="$b +0000" channel="premier2"><title>Live NHL Ice Hockey</title><desc>Philadelphia Flyers v Colorado Avalanche</desc></programme>
 <programme start="$a +0000" stop="$b +0000" channel="news"><title>The National</title></programme>
 </tv>
 XML
@@ -101,6 +106,7 @@ cat > "$WORK/fake/channels.json" <<'JSON'
  {"id": 46, "name": "CA - HISTORY HD", "channel_number": 30.0, "channel_group_id": 5, "streams": [11]},
  {"id": 47, "name": "CA - STINGRAY NATURE HD", "channel_number": 31.0, "channel_group_id": 5, "streams": [12]},
  {"id": 48, "name": "UK - GAATV 004", "channel_number": 192.0, "channel_group_id": null, "streams": [13]},
+ {"id": 49, "name": "UK - PREMIER SPORTS 2 SD", "channel_number": 140.0, "channel_group_id": null, "streams": [14]},
  {"id": 43, "name": "CBC News", "channel_number": 5.0, "channel_group_id": null, "streams": [8]}]
 JSON
 printf '%s' '[{"id": 1072, "name": "AM | CA\u00a0|\u00a0NHL PPV"}, {"id": 5, "name": "AM | CA | DOCUMENTARY"}, {"id": 7, "name": "EU | UK | TNT SPORTS"}]' > "$WORK/fake/groups.json"
@@ -111,7 +117,15 @@ cat > "$WORK/fake/streams.json" <<'JSON'
  {"id": 11, "name": "CA - HISTORY HD"},
  {"id": 12, "name": "CA - STINGRAY NATURE HD"},
  {"id": 13, "name": "UK - GAATV 004 : DOWN @ CLONDUFF STALE_DATE – 5:30 PM UK / 12:30 PM ET"},
+ {"id": 14, "name": "UK - PREMIER SPORTS 2 SD"},
  {"id": 8, "name": "CBC News"}]
+JSON
+# Fake ESPN team list (site.api.espn.com shape). Other leagues 404, like a partial outage.
+mkdir -p "$WORK/fake/espn/hockey/nhl"
+cat > "$WORK/fake/espn/hockey/nhl/teams" <<'JSON'
+{"sports":[{"leagues":[{"teams":[
+ {"team":{"displayName":"Philadelphia Flyers","shortDisplayName":"Flyers","name":"Flyers","location":"Philadelphia"}},
+ {"team":{"displayName":"Colorado Avalanche","shortDisplayName":"Avalanche","name":"Avalanche","location":"Colorado"}}]}]}]}
 JSON
 # A provider-style stale event, two days old.
 sed -i "s/STALE_DATE/$(date -u -d '-2 days' '+%b %-d' | tr a-z A-Z)/" "$WORK/fake/streams.json"
@@ -196,6 +210,7 @@ rename_and_wait() {
   curl -sf -X POST "$J/ScheduledTasks/Running/$RENAME_ID" -H "$A" >/dev/null
   sleep 4
 }
+channel_id_exact() { curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"]==sys.argv[1]))' "$1"; }
 USER_ID=$(curl -sf "$J/Users" -H "$A" | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["Id"])')
 row() { # web Programs page row query -> program names
   curl -sf "$J/LiveTv/Programs/Recommended?userId=$USER_ID&limit=12&$1" -H "$A" \
@@ -227,6 +242,14 @@ if [[ "$CODE" == "200 image/"* ]] && [[ -s "$WORK/pawn.img" ]]; then echo "PASS:
   curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print("channel image tags:",[c.get("ImageTags") for c in json.load(sys.stdin)["Items"] if c["Name"]=="CA - HISTORY HD"])'
   curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$HISTORY_ID" -H "$A" | python3 -c 'import json,sys;print("program image tags:",[(i["Name"],i.get("ImageTags")) for i in json.load(sys.stdin)["Items"]])'
   docker logs "$NAME" 2>&1 | grep -iE "EpgChannelNames.*(WRN|ERR|logo)|ConvertImage|history.png" | tail -6
+  exit 1
+fi
+# Team database: generic EPG title + teams in the description -> team names in the title.
+PREMIER_ID=$(channel_id_exact "UK - PREMIER SPORTS 2 SD")
+TITLES=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$PREMIER_ID" -H "$A" | python3 -c 'import json,sys;print("\n".join(i["Name"] for i in json.load(sys.stdin)["Items"]))')
+if grep -qxF "Live NHL: Flyers vs Avalanche" <<<"$TITLES"; then echo "PASS: program retitled with team names"; else
+  echo "FAIL: expected 'Live NHL: Flyers vs Avalanche', got: $TITLES"
+  docker logs "$NAME" 2>&1 | grep -iE "team|EpgChannelNames.*(WRN|ERR)" | tail -6
   exit 1
 fi
 # Placeholder (program titled like its own channel) on a ruled channel stays out of the row.

@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
+using Jellyfin.Plugin.EpgChannelNames.Teams;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<IDispatcharrClient, DispatcharrClient>();
+        serviceCollection.AddSingleton<ITeamDatabase, TeamDatabase>();
         serviceCollection.AddSingleton<ChannelRenamer>();
         serviceCollection.AddHostedService<GuideRefreshListener>();
     }

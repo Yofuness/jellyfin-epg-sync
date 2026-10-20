@@ -51,6 +51,14 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
+        if self.path.startswith("/espn/") and "/.." not in self.path:
+            # Fake ESPN site API for the team database: /espn/{sport}/{league}/teams. No API key.
+            try:
+                with open(f"{DATA}{self.path}") as f:
+                    self._send(200, json.load(f))
+            except FileNotFoundError:
+                self._send(404, {"detail": "Not found."})
+            return
         if not self._authorized():
             return
         routes = {"/api/channels/channels/": "channels.json", "/api/channels/groups/": "groups.json"}

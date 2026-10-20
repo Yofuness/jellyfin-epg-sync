@@ -56,6 +56,10 @@
           <label><input is="emby-checkbox" type="checkbox" id="UseChannelLogo" /><span>Use the channel logo for programs without an image</span></label>
           <div class="fieldDescription">Makes Programs-page cards recognizable. Real program images are never replaced.</div>
         </div>
+        <div class="checkboxContainer checkboxContainer-withDescription">
+          <label><input is="emby-checkbox" type="checkbox" id="UseTeamNames" /><span>Put team names in sports program titles</span></label>
+          <div class="fieldDescription">"Live NHL Ice Hockey" with "Philadelphia Flyers v Colorado Avalanche" in its description becomes "Live NHL: Flyers vs Avalanche". Covers NHL, NFL, NBA, MLB, MLS, Premier League, Championship, LaLiga, Champions League, Premiership Rugby, URC, Champions Cup and GAA. The team list comes from ESPN and is refreshed monthly by the "Refresh sports team list" scheduled task. Turning this off restores the EPG titles.</div>
+        </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="GameProgramTags" label="Tags for game programs" />
           <div class="fieldDescription">Comma-separated. <code>Live</code> ranks games higher in "On Now"; <code>Sports</code> puts them in the Programs page's Sports row. Leave empty for none.</div>
@@ -82,6 +86,7 @@
           page.querySelector('#RenamePrograms').checked = config.RenamePrograms;
           page.querySelector('#RemoveNoGamePrograms').checked = config.RemoveNoGamePrograms;
           page.querySelector('#UseChannelLogo').checked = config.UseChannelLogo;
+          page.querySelector('#UseTeamNames').checked = config.UseTeamNames;
           Dashboard.hideLoadingMsg();
         });
       });
@@ -96,6 +101,7 @@
           config.RenamePrograms = page.querySelector('#RenamePrograms').checked;
           config.RemoveNoGamePrograms = page.querySelector('#RemoveNoGamePrograms').checked;
           config.UseChannelLogo = page.querySelector('#UseChannelLogo').checked;
+          config.UseTeamNames = page.querySelector('#UseTeamNames').checked;
           ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
         });
         return false;

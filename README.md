@@ -38,6 +38,7 @@ The plugin reads every Dispatcharr channel (3 requests) and matches Jellyfin cha
 - The program airing now gets the event title, the full stream name as description, `Live` + `Sports` tags (or the group's category), so it tops "On Now" and shows in its row.
 - Later guide blocks stay plain until they start airing. With nothing on, the airing placeholder is hidden; the channel stays.
 - Programs without an image show their channel's logo, so Programs-page cards are recognizable.
+- Sports programs with a generic title get the teams from their description: "Live NHL Ice Hockey" + "Philadelphia Flyers v Colorado Avalanche" becomes **Live NHL: Flyers vs Avalanche**. Covers NHL, NFL, NBA, MLB, MLS, Premier League, Championship, LaLiga, Champions League, Premiership Rugby, URC, Champions Cup and GAA counties. Teams come from ESPN's public API (no key) and are refreshed monthly by the *Refresh sports team list* scheduled task. Only programs with exactly two teams of one league are renamed. Turn it off with *Put team names in sports program titles*; the EPG titles come back.
 - Finished events that the provider leaves in stream names are ignored: if the title has a start time (`OCT 17 – 5:30 PM UK`) more than 6 hours ago (setting), the channel counts as nothing on.
 
 **Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. Map Dispatcharr groups to rows, one per line:

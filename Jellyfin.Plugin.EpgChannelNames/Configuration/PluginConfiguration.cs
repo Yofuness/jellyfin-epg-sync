@@ -74,6 +74,16 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool UseChannelLogo { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether sports programs are retitled with the two teams found in their description, e.g. "Live NHL: Flyers vs Avalanche".
+    /// </summary>
+    public bool UseTeamNames { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the ESPN site API base URL for the team database. Not on the config page; tests point it at a fake server.
+    /// </summary>
+    public string TeamDatabaseUrl { get; set; } = "https://site.api.espn.com/apis/site/v2/sports/";
+
+    /// <summary>
     /// Gets or sets how many hours ahead programs are checked.
     /// </summary>
     public int ProgramWindowHours { get; set; } = 12;
