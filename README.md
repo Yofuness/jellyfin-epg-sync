@@ -8,11 +8,13 @@ Jellyfin resets channel names to the M3U name on every "Refresh Guide". This plu
 ## Install (plugin repository, recommended)
 1. Dashboard → Plugins → Repositories (or Catalog → gear icon) → **+**
 2. Name: `EPG Channel Names`
-   URL: `https://github.com/Yofuness/jellyfin-epg-sync/releases/latest/download/manifest.json`
+   URL: `https://raw.githubusercontent.com/Yofuness/jellyfin-epg-sync/main/manifest.json`
 3. Save, open the Catalog, and install **EPG Channel Names**
 4. Restart Jellyfin
 
-Updates: the URL always points at the newest release, so Jellyfin offers new versions automatically.
+Updates: the release build adds each new version to `manifest.json` on `main` only after the zip is attached, so Jellyfin offers new versions automatically and never sees a half-finished release. Older versions stay listed for rollback.
+
+Upgrading from the old `releases/latest/download/manifest.json` URL: it still works, but switch to the URL above.
 
 ## Install (manual)
 1. `./build.sh` (needs Docker only)
@@ -20,7 +22,7 @@ Updates: the URL always points at the newest release, so Jellyfin offers new ver
 3. Restart Jellyfin
 
 ## Releasing
-Publish a GitHub release with a tag like `v1.0.1`. The Release workflow runs the tests, builds the plugin, and attaches the zip and `manifest.json` to the release.
+Publish a GitHub release with a tag like `v1.0.1`. The Release workflow runs the tests, builds the plugin, attaches the zip and `manifest.json` to the release, then commits the new version into `manifest.json` on `main`.
 
 ## Configure
 Dashboard → Plugins → EPG Channel Names:

@@ -1,0 +1,60 @@
+[
+  {
+    "guid": "4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64",
+    "name": "EPG Channel Names",
+    "description": "Renames Live TV channels to the program currently airing in the EPG.",
+    "overview": "Fixes stale channel names like 'NHL GAME 01 Team A vs Team B'.",
+    "owner": "Yofuness",
+    "category": "LiveTV",
+    "versions": [
+      {
+        "version": "1.4.0.0",
+        "changelog": "Release 1.4.0.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v1.4.0/epg-channel-names_1.4.0.0.zip",
+        "checksum": "11a7b4d625a87143e2d55b169dd63bc9",
+        "timestamp": "2026-10-20T00:27:48Z"
+      },
+      {
+        "version": "1.3.0.0",
+        "changelog": "Release 1.3.0.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v1.3.0/epg-channel-names_1.3.0.0.zip",
+        "checksum": "997192d19ccbb03cb31fe9082a4ff8f5",
+        "timestamp": "2026-10-20T00:19:35Z"
+      },
+      {
+        "version": "1.2.0.0",
+        "changelog": "Release 1.2.0.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v1.2.0/epg-channel-names_1.2.0.0.zip",
+        "checksum": "128e95dc4b14f7d043771a3a82b2cd2d",
+        "timestamp": "2026-10-20T00:01:45Z"
+      },
+      {
+        "version": "1.1.1.0",
+        "changelog": "Release 1.1.1.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v1.1.1/epg-channel-names_1.1.1.0.zip",
+        "checksum": "a4c4d5fdd1300a9893f54e306f0a1c11",
+        "timestamp": "2026-10-19T23:50:18Z"
+      },
+      {
+        "version": "1.1.0.0",
+        "changelog": "Release 1.1.0.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v1.1.0/epg-channel-names_1.1.0.0.zip",
+        "checksum": "b48327a4e6518da48499b028f273bbd7",
+        "timestamp": "2026-10-19T23:34:25Z"
+      },
+      {
+        "version": "1.0.1.0",
+        "changelog": "Release 1.0.1.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v1.0.1/epg-channel-names_1.0.1.0.zip",
+        "checksum": "6022b83d3962be17a2e241f57d991d13",
+        "timestamp": "2026-10-18T20:53:12Z"
+      }
+    ]
+  }
+]

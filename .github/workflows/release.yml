@@ -41,3 +41,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" dist/*.zip dist/manifest.json --clobber
+
+      - name: Check manifest merge
+        # Runs everywhere (also under act) on a temp copy, so a broken merge fails before anything is pushed.
+        run: |
+          cp manifest.json "$RUNNER_TEMP/manifest.check.json"
+          python3 -I scripts/merge-manifest.py "$RUNNER_TEMP/manifest.check.json" dist/manifest.json
+          python3 -c 'import json,sys;v=json.load(open(sys.argv[1]))[0]["versions"][0]["version"];assert v==sys.argv[2],(v,sys.argv[2]);print("newest:",v)' \
+            "$RUNNER_TEMP/manifest.check.json" "${{ steps.ver.outputs.version }}"
+
+      - name: Publish manifest.json on main
+        # Only after the zip is attached, so the stable repository URL never points at a missing file.
+        # Skipped under `act`: with --bind it would switch branches in your local checkout.
+        if: ${{ !env.ACT }}
+        run: |
+          cp dist/manifest.json "$RUNNER_TEMP/release-manifest.json"
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 -I scripts/merge-manifest.py manifest.json "$RUNNER_TEMP/release-manifest.json"
+          if git diff --quiet -- manifest.json; then echo "manifest.json unchanged"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "manifest: add ${{ steps.ver.outputs.version }}" -- manifest.json
+          git push origin main

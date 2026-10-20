@@ -8,7 +8,7 @@ Jellyfin 10.11 plugin (C#, net9.0) that renames Live TV channels to the EPG prog
 - `build.sh` runs as the host user. If `bin/` or `obj/` end up root-owned, remove them through a container, e.g. `docker run --rm -v "$PWD/Jellyfin.Plugin.EpgChannelNames":/src alpine rm -rf /src/bin /src/obj`
 
 ## Releases
-`.github/workflows/release.yml` runs when a GitHub release is published. It turns the tag (`v1.2.3`) into a 4-part version, runs `./test.sh`, then `./build.sh`, and uploads `dist/*` to the release. The plugin repository URL is `releases/latest/download/manifest.json`.
+`.github/workflows/release.yml` runs when a GitHub release is published. It turns the tag (`v1.2.3`) into a 4-part version, runs `./test.sh`, then `./build.sh`, and uploads `dist/*` to the release. The plugin repository URL is `https://raw.githubusercontent.com/Yofuness/jellyfin-epg-sync/main/manifest.json`: root `manifest.json`, all versions newest-first. The last workflow step merges the release's manifest into it with `scripts/merge-manifest.py` (same version replaces, otherwise prepends) and pushes to `main` as github-actions[bot], only after the zip upload succeeds. The old `releases/latest/download/manifest.json` still works but 404s for about 2 min after each release while the build runs. v1.0.0 is deliberately absent (built against 10.11.11; fails to load on older 10.11). Under `act` the push step is skipped; "Check manifest merge" runs on a temp copy.
 Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bind` is required because the scripts start Docker containers that mount the repo:
 `echo '{"action":"published","release":{"tag_name":"v1.0.0"}}' > /tmp/ev.json && act release -e /tmp/ev.json --bind -P ubuntu-latest=catthehacker/ubuntu:act-latest`
 
