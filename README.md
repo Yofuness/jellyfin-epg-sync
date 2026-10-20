@@ -57,7 +57,7 @@ The plugin reads every Dispatcharr channel (3 requests) and matches Jellyfin cha
 
 **Regular channels** keep their names and guide. Sports programs with a generic title get the teams from their description: "Live NHL Ice Hockey" + "Philadelphia Flyers v Colorado Avalanche" becomes **Live NHL: Flyers vs Avalanche**. Covers NHL, NFL, NBA, MLB, MLS, Premier League, Championship, LaLiga, Champions League, Premiership Rugby, URC, Champions Cup and GAA counties. Teams come from ESPN's public API (no key) and are refreshed monthly by the *Refresh sports team list* scheduled task. Only programs with exactly two teams of one league are renamed. Turn it off with *Put team names in sports program titles*; the EPG titles come back.
 
-**Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. The row is picked automatically from the group name (setting *Sort channels into Programs page rows automatically*). Only if a guess is wrong, add a rule, one per line; `None` keeps a group out of all rows:
+**Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. The row is picked automatically from the group name. To change one, open the plugin settings: the **Dispatcharr groups** table lists every group with channels; pick a row or **Off** for any group and Save. Groups not in Dispatcharr can go in **Custom rules**, one per line (`None` = no row):
 ```
 UK | SPORTS NEWS = Sports
 UK | MUSIC SHOWS = None

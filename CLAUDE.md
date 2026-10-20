@@ -21,6 +21,7 @@ Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bi
 - `Teams/`: team database. `League.All` (keys, title labels, ESPN paths, keywords; GAA is a built-in county list). `TeamDatabase` downloads `site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams` (no key) into `DataFolderPath/teams.json`; `GetTeamsAsync` uses the cache and downloads only when there is none (retry at most hourly); `RefreshTeamsTask` (key `EpgChannelNamesRefreshTeams`, every 30 days) refreshes, a failing league keeps its cached teams. `TeamMatcher.BuildTitle` is pure. TheSportsDB was rejected: its free key ignores the league id and rate-limits (429).
 - `GuideRefreshListener.cs`: reruns the task when Jellyfin's `RefreshGuide` task completes.
 - `ServiceRegistrator.cs`: DI registration.
+- `Api/GroupsController.cs`: `GET /EpgChannelNames/Groups` (admin only, `RequiresElevation`) returns Dispatcharr groups with channel count and guessed row for the config page's group table. Needs `<FrameworkReference Include="Microsoft.AspNetCore.App" />`. The page stores table choices as ordinary lines in `GroupCategoryRules`; lines for groups not in the table stay in the Custom rules box.
 - `Configuration/`: settings class + embedded `configPage.html`. Plugin GUID `4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64` (keep in sync with `Plugin.cs`, the config page, and `build.sh`).
 
 ## Key behavior (non-obvious)

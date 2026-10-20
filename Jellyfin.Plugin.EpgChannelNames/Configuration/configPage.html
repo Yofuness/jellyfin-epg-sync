@@ -2,7 +2,7 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>EPG Channel Names</title></head>
 <body>
-<div id="EpgChannelNamesConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-textarea">
+<div id="EpgChannelNamesConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-textarea,emby-select">
   <div data-role="content">
     <div class="content-primary">
       <form id="EpgChannelNamesConfigForm">
@@ -34,14 +34,21 @@
           <input is="emby-input" type="number" id="StaleEventHours" min="0" label="Ignore events that started more than this many hours ago" />
           <div class="fieldDescription">Read from the title, e.g. <code>OCT 17 – 5:00 PM UK</code>. Providers often leave finished events in stream names. 0 = off. Titles without a date are never ignored.</div>
         </div>
+        <h3>Programs page rows</h3>
+        <div class="fieldDescription">Jellyfin's Programs page shows rows (Shows, Movies, Sports, News, Kids). Each Dispatcharr group's programs go into one row.</div>
         <div class="checkboxContainer checkboxContainer-withDescription">
-          <label><input is="emby-checkbox" type="checkbox" id="AutoGroupCategories" /><span>Sort channels into Programs page rows automatically</span></label>
-          <div class="fieldDescription">Picks the row from the Dispatcharr group name: SPORTS, NHL, PPV… = Sports; NEWS = News; KIDS, CARTOON = Kids; MOVIES, CINEMA = Movies; DOCUMENTARY, ENTERTAINMENT… = Shows. Groups that match nothing get no row. Rules below win.</div>
+          <label><input is="emby-checkbox" type="checkbox" id="AutoGroupCategories" /><span>Pick rows automatically from group names</span></label>
+          <div class="fieldDescription">SPORTS, NHL, PPV… = Sports; NEWS = News; KIDS, CARTOON = Kids; MOVIES, CINEMA = Movies; DOCUMENTARY, ENTERTAINMENT… = Shows. Change any group below.</div>
         </div>
-        <div class="inputContainer">
-          <label class="textareaLabel" for="GroupCategoryRules">Row rules (optional, override the automatic row)</label>
-          <textarea is="emby-textarea" id="GroupCategoryRules" rows="6" style="width:100%;font-family:monospace"></textarea>
-          <div class="fieldDescription">One per line: <code>Dispatcharr group = Shows|Movies|Sports|News|Kids|None</code>, e.g. <code>AM | CA | DOCUMENTARY = Shows</code>. <code>None</code> keeps a group out of all rows. Programs on those channels appear in that row. Removing a rule undoes it. Unknown groups are logged with the list of real ones.</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:.5em 0">
+          <strong>Dispatcharr groups</strong>
+          <button is="emby-button" type="button" id="ReloadGroups" class="raised" style="margin:0"><span>Reload groups</span></button>
+        </div>
+        <div id="GroupTable" style="border:1px solid rgba(128,128,128,.35);border-radius:6px;overflow:hidden"></div>
+        <div class="inputContainer" style="margin-top:1.5em">
+          <label class="textareaLabel" for="GroupCategoryRules">Custom rules (groups not listed above)</label>
+          <textarea is="emby-textarea" id="GroupCategoryRules" rows="3" style="width:100%;font-family:monospace"></textarea>
+          <div class="fieldDescription">One per line: <code>group = Shows|Movies|Sports|News|Kids|None</code>. Rarely needed: the table covers every Dispatcharr group with channels.</div>
         </div>
         <div class="inputContainer">
           <label class="textareaLabel" for="IgnoredProgramTitles">Never categorize programs titled</label>
@@ -83,6 +90,63 @@
       var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
       var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'EventRegex', 'GroupCategoryRules', 'IgnoredProgramTitles', 'GameProgramTags', 'ProgramWindowHours', 'StaleEventHours', 'IntervalMinutes'];
       var page = document.querySelector('#EpgChannelNamesConfigPage');
+      var rows = ['Shows', 'Movies', 'Sports', 'News', 'Kids'];
+      var listed = []; // group names shown in the table
+      var norm = function (g) { return g.replace(/[\s\u00a0]+/g, ' ').trim().toUpperCase(); };
+      var parseRules = function (text) {
+        return (text || '').split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l && l[0] !== '#'; })
+          .map(function (l) { var i = l.lastIndexOf('='); return { line: l, group: i > 0 ? l.slice(0, i).trim() : '', value: i > 0 ? l.slice(i + 1).trim() : '' }; });
+      };
+      var esc = function (t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
+      var message = function (text) {
+        page.querySelector('#GroupTable').innerHTML = '<div style="padding:1em;opacity:.8">' + esc(text) + '</div>';
+      };
+      var renderGroups = function (groups, rulesText) {
+        var rules = parseRules(rulesText);
+        var byGroup = {};
+        rules.forEach(function (r) { byGroup[norm(r.group)] = r.value; });
+        listed = groups.map(function (g) { return g.Name; });
+        var html = groups.map(function (g, i) {
+          var current = byGroup[norm(g.Name)] || '';
+          var match = function (v) { return current.toLowerCase() === v.toLowerCase() ? ' selected' : ''; };
+          var options = '<option value="">Automatic (' + (g.Automatic || 'no row') + ')</option>'
+            + rows.map(function (r) { return '<option value="' + r + '"' + match(r) + '>' + r + '</option>'; }).join('')
+            + '<option value="None"' + match('None') + '>Off (no row)</option>';
+          return '<div style="display:flex;align-items:center;gap:1em;padding:.5em 1em;' + (i ? 'border-top:1px solid rgba(128,128,128,.2)' : '') + '">'
+            + '<div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(g.Name) + '</div>'
+            + '<div style="font-size:85%;opacity:.6">' + g.Channels + ' channel' + (g.Channels === 1 ? '' : 's') + '</div></div>'
+            + '<select is="emby-select" class="groupRow" data-group="' + esc(g.Name) + '" style="width:12em">' + options + '</select></div>';
+        }).join('');
+        if (!groups.length) { message('Dispatcharr has no groups with channels.'); } else { page.querySelector('#GroupTable').innerHTML = html; }
+        // Rules for listed groups live in the table; the text box keeps the rest.
+        var listedNorm = listed.map(norm);
+        page.querySelector('#GroupCategoryRules').value = rules
+          .filter(function (r) { return listedNorm.indexOf(norm(r.group)) < 0; })
+          .map(function (r) { return r.line; }).join('\n');
+      };
+      var loadGroups = function (rulesText) {
+        message('Loading groups from Dispatcharr…');
+        return ApiClient.fetch({ url: ApiClient.getUrl('EpgChannelNames/Groups'), type: 'GET', dataType: 'json' })
+          .then(function (groups) { renderGroups(groups, rulesText); })
+          .catch(function (err) {
+            listed = [];
+            page.querySelector('#GroupCategoryRules').value = rulesText || '';
+            var show = function (t) { message(t || 'Could not load groups. Set the Dispatcharr URL and API key, Save, then Reload groups.'); };
+            if (err && err.text) { err.text().then(show, function () { show(); }); } else { show(); }
+          });
+      };
+      var collectRules = function () {
+        var lines = [];
+        page.querySelectorAll('.groupRow').forEach(function (sel) {
+          if (sel.value) { lines.push(sel.getAttribute('data-group') + ' = ' + sel.value); }
+        });
+        var listedNorm = listed.map(norm);
+        parseRules(page.querySelector('#GroupCategoryRules').value).forEach(function (r) {
+          if (listedNorm.indexOf(norm(r.group)) < 0) { lines.push(r.line); }
+        });
+        return lines.join('\n');
+      };
+      page.querySelector('#ReloadGroups').addEventListener('click', function () { loadGroups(collectRules()); });
       page.addEventListener('pageshow', function () {
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
@@ -93,6 +157,7 @@
           page.querySelector('#UseTeamNames').checked = config.UseTeamNames;
           page.querySelector('#AutoGroupCategories').checked = config.AutoGroupCategories;
           Dashboard.hideLoadingMsg();
+          loadGroups(config.GroupCategoryRules);
         });
       });
       page.querySelector('#EpgChannelNamesConfigForm').addEventListener('submit', function (e) {
@@ -100,6 +165,7 @@
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
           fields.forEach(function (f) { config[f] = page.querySelector('#' + f).value; });
+          config.GroupCategoryRules = collectRules();
           config.IntervalMinutes = parseInt(config.IntervalMinutes, 10) || 15;
           config.ProgramWindowHours = parseInt(config.ProgramWindowHours, 10) || 12;
           config.StaleEventHours = Math.max(0, parseInt(config.StaleEventHours, 10) || 0);

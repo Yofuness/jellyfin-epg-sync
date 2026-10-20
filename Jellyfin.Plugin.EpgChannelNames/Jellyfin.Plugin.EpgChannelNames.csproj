@@ -19,6 +19,10 @@
     <PackageReference Include="SmartAnalyzers.MultithreadingAnalyzer" Version="1.1.31" PrivateAssets="All" />
   </ItemGroup>
   <ItemGroup>
+    <!-- ASP.NET Core for the config page's API controller; Jellyfin hosts it. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Jellyfin.Plugin.EpgChannelNames.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
