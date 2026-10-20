@@ -32,6 +32,7 @@ public class ChannelRenamerTests
     private readonly Dictionary<Guid, LiveTvProgram> _laterItems = new();
     private readonly PluginConfiguration _config = new();
     private readonly Mock<IDispatcharrClient> _dispatcharr = new();
+    private readonly Mock<MediaBrowser.Controller.Persistence.IItemRepository> _repository = new();
     private readonly Dictionary<string, string> _streamNames = new();
     private readonly Dictionary<string, string> _groups = new();
 
@@ -623,7 +624,7 @@ public class ChannelRenamerTests
         _groups["30"] = "AM | CA | DOCUMENTARY";
         var logger = new ListLogger();
 
-        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, () => _config)
+        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, _repository.Object, () => _config)
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(logger.Warnings, m => m.Contains("'AM | CA | DOCUMENTARIES' matches no Dispatcharr channel", StringComparison.Ordinal) && m.Contains("AM | CA | DOCUMENTARY", StringComparison.Ordinal));
@@ -662,6 +663,42 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task RemoteChannelLogo_IsDownloadedOnce_ThenUsedForPrograms()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        var channel = AddChannel("CA - HISTORY HD", "Pawn Stars", number: "30");
+        channel.SetImage(new MediaBrowser.Controller.Entities.ItemImageInfo { Path = "http://dispatcharr:9191/logo.png", Type = MediaBrowser.Model.Entities.ImageType.Primary }, 0);
+        _streamNames["30"] = "CA - HISTORY HD";
+        _library
+            .Setup(l => l.ConvertImageToLocal(channel, It.IsAny<MediaBrowser.Controller.Entities.ItemImageInfo>(), 0, false))
+            .Callback(() => channel.GetImageInfo(MediaBrowser.Model.Entities.ImageType.Primary, 0)!.Path = "/metadata/livetv/x/poster.png")
+            .ReturnsAsync(new MediaBrowser.Controller.Entities.ItemImageInfo { Path = "/metadata/livetv/x/poster.png", Type = MediaBrowser.Model.Entities.ImageType.Primary });
+
+        await RunAsync();
+        await RunAsync();
+
+        Assert.Equal("/metadata/livetv/x/poster.png", _programItems[channel.Id].GetImageInfo(MediaBrowser.Model.Entities.ImageType.Primary, 0)!.Path);
+        _library.Verify(l => l.ConvertImageToLocal(channel, It.IsAny<MediaBrowser.Controller.Entities.ItemImageInfo>(), 0, false), Times.Once());
+        _repository.Verify(r => r.SaveImages(_programItems[channel.Id]), Times.Once());
+    }
+
+    [Fact]
+    public async Task UseChannelLogoOff_NothingIsDownloadedOrSet()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        _config.UseChannelLogo = false;
+        var channel = AddChannel("CA - HISTORY HD", "Pawn Stars", number: "30");
+        channel.SetImage(new MediaBrowser.Controller.Entities.ItemImageInfo { Path = "/metadata/poster.png", Type = MediaBrowser.Model.Entities.ImageType.Primary }, 0);
+        _streamNames["30"] = "CA - HISTORY HD";
+
+        await RunAsync();
+
+        Assert.Null(_programItems[channel.Id].GetImageInfo(MediaBrowser.Model.Entities.ImageType.Primary, 0));
+    }
+
+    [Fact]
     public async Task Summary_IsLoggedEveryRun()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
@@ -672,7 +709,7 @@ public class ChannelRenamerTests
         _streamNames["10"] = "CA - NHL GAME 07 : ";
         var logger = new ListLogger();
 
-        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, () => _config)
+        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, _repository.Object, () => _config)
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(
@@ -688,7 +725,7 @@ public class ChannelRenamerTests
         AddChannel("CA - NHL GAME 01", "x");
         var logger = new ListLogger();
 
-        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, () => _config)
+        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, _repository.Object, () => _config)
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(logger.Warnings, m => m.StartsWith("Nothing to do", StringComparison.Ordinal));
@@ -759,7 +796,7 @@ public class ChannelRenamerTests
         AddChannel("NHL GAME 01 A vs B", "Game");
         var reports = new List<double>();
 
-        await new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, () => _config)
+        await new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, _repository.Object, () => _config)
             .RunAsync(new SyncProgress(reports), CancellationToken.None);
 
         Assert.Equal(100, reports[^1]);
@@ -773,7 +810,7 @@ public class ChannelRenamerTests
         await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, () => _config)
+            () => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, _repository.Object, () => _config)
                 .RunAsync(new SyncProgress(new List<double>()), cts.Token));
     }
 
@@ -818,7 +855,7 @@ public class ChannelRenamerTests
     }
 
     private Task RunAsync()
-        => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, () => _config)
+        => new ChannelRenamer(_library.Object, NullLogger<ChannelRenamer>.Instance, _dispatcharr.Object, _repository.Object, () => _config)
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
     private void VerifySaved(LiveTvChannel channel, Times times)

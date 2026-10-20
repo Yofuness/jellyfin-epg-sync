@@ -23,6 +23,8 @@ NAME="epgcn-it-$$"
 NET="epgcn-net-$$"
 FAKE="epgcn-dispatcharr-$$"
 cleanup() {
+  # KEEP=1 ./test.sh --integration leaves the containers running for inspection.
+  if [[ -n "${KEEP:-}" ]]; then echo "KEEP set: left $NAME, $FAKE, $WORK"; return; fi
   docker rm -f "$NAME" "$FAKE" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
   # Jellyfin writes as root inside the container; delete through a container too.
@@ -48,7 +50,7 @@ http://127.0.0.1/none.ts
 http://127.0.0.1/none7.ts
 #EXTINF:-1 tvg-id="tnt2" tvg-chno="120",UK - TNT SPORTS | EVENT 2 HD :
 http://127.0.0.1/none120.ts
-#EXTINF:-1 tvg-id="history" tvg-chno="30",CA - HISTORY HD
+#EXTINF:-1 tvg-id="history" tvg-chno="30" tvg-logo="http://dispatcharr:8000/logos/history.png",CA - HISTORY HD
 http://127.0.0.1/none30.ts
 #EXTINF:-1 tvg-id="stingray" tvg-chno="31",CA - STINGRAY NATURE HD
 http://127.0.0.1/none31.ts
@@ -83,7 +85,15 @@ XML
 write_epg "Maple Leafs vs Canadiens"
 
 # Fake Dispatcharr (scripts/fake_dispatcharr.py): same endpoints and JSON shapes as Dispatcharr 0.32.
-mkdir -p "$WORK/fake"
+mkdir -p "$WORK/fake/logos"
+# A real 64x64 PNG as History's channel logo.
+python3 -I - "$WORK/fake/logos/history.png" <<'PY'
+import struct, sys, zlib
+w = h = 64
+raw = b"".join(b"\x00" + bytes([200, 30, 30]) * w for _ in range(h))
+chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+open(sys.argv[1], "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+PY
 cat > "$WORK/fake/channels.json" <<'JSON'
 [{"id": 42, "name": "CA - NHL GAME 01", "channel_number": 101.0, "channel_group_id": 1072, "streams": [7]},
  {"id": 44, "name": "CA - NHL GAME 07", "channel_number": 107.0, "channel_group_id": 1072, "streams": [9]},
@@ -208,6 +218,17 @@ expect "UK - GAATV 004"
 expect_in_row Sports "hasAired=false&isSports=true" "ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT" 1
 expect_in_row Sports "hasAired=false&isSports=true" "Major League Baseball" 1
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "Pawn Stars" 1
+# Programs without an image get their channel's logo, and Jellyfin actually serves it.
+HISTORY_ID=$(curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"]=="CA - HISTORY HD"))')
+PAWN_ID=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$HISTORY_ID" -H "$A" | python3 -c 'import json,sys;print(next(i["Id"] for i in json.load(sys.stdin)["Items"] if i["Name"]=="Pawn Stars"))')
+CODE=$(curl -s -o "$WORK/pawn.img" -w '%{http_code} %{content_type}' "$J/Items/$PAWN_ID/Images/Primary" -H "$A")
+if [[ "$CODE" == "200 image/"* ]] && [[ -s "$WORK/pawn.img" ]]; then echo "PASS: program image served from channel logo ($CODE)"; else
+  echo "FAIL: program image: $CODE"
+  curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print("channel image tags:",[c.get("ImageTags") for c in json.load(sys.stdin)["Items"] if c["Name"]=="CA - HISTORY HD"])'
+  curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$HISTORY_ID" -H "$A" | python3 -c 'import json,sys;print("program image tags:",[(i["Name"],i.get("ImageTags")) for i in json.load(sys.stdin)["Items"]])'
+  docker logs "$NAME" 2>&1 | grep -iE "EpgChannelNames.*(WRN|ERR|logo)|ConvertImage|history.png" | tail -6
+  exit 1
+fi
 # Placeholder (program titled like its own channel) on a ruled channel stays out of the row.
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "CA - STINGRAY NATURE" 0
 

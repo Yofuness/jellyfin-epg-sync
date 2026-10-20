@@ -52,6 +52,10 @@
           <label><input is="emby-checkbox" type="checkbox" id="RemoveNoGamePrograms" /><span>Hide programs on event channels with nothing on</span></label>
           <div class="fieldDescription">Removes the airing placeholder (which only plays a logo) so it doesn't show on the Programs page. Later blocks stay, so a game added later still gets a program. The channel itself stays.</div>
         </div>
+        <div class="checkboxContainer">
+          <label><input is="emby-checkbox" type="checkbox" id="UseChannelLogo" /><span>Use the channel logo for programs without an image</span></label>
+          <div class="fieldDescription">Makes Programs-page cards recognizable. Real program images are never replaced.</div>
+        </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="GameProgramTags" label="Tags for game programs" />
           <div class="fieldDescription">Comma-separated. <code>Live</code> ranks games higher in "On Now"; <code>Sports</code> puts them in the Programs page's Sports row. Leave empty for none.</div>
@@ -77,6 +81,7 @@
           fields.forEach(function (f) { page.querySelector('#' + f).value = config[f]; });
           page.querySelector('#RenamePrograms').checked = config.RenamePrograms;
           page.querySelector('#RemoveNoGamePrograms').checked = config.RemoveNoGamePrograms;
+          page.querySelector('#UseChannelLogo').checked = config.UseChannelLogo;
           Dashboard.hideLoadingMsg();
         });
       });
@@ -90,6 +95,7 @@
           config.StaleEventHours = Math.max(0, parseInt(config.StaleEventHours, 10) || 0);
           config.RenamePrograms = page.querySelector('#RenamePrograms').checked;
           config.RemoveNoGamePrograms = page.querySelector('#RemoveNoGamePrograms').checked;
+          config.UseChannelLogo = page.querySelector('#UseChannelLogo').checked;
           ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
         });
         return false;

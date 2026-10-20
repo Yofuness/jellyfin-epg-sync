@@ -12,6 +12,8 @@ using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
+using MediaBrowser.Controller.Persistence;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.EpgChannelNames;
@@ -26,9 +28,14 @@ public partial class ChannelRenamer
     private const string OriginalKey = "EpgChannelNames.Original";
     private const string AppliedKey = "EpgChannelNames.Applied";
 
+    // Path of the channel logo the plugin put on a program, so a real program image is never replaced
+    // and a changed channel logo is followed.
+    private const string LogoKey = "EpgChannelNames.Logo";
+
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ChannelRenamer> _logger;
     private readonly IDispatcharrClient _dispatcharr;
+    private readonly IItemRepository _itemRepository;
     private readonly Func<PluginConfiguration> _getConfig;
 
     /// <summary>
@@ -37,8 +44,9 @@ public partial class ChannelRenamer
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
     /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
-    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr)
-        : this(libraryManager, logger, dispatcharr, () => Plugin.Instance!.Configuration)
+    /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
+    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository)
+        : this(libraryManager, logger, dispatcharr, itemRepository, () => Plugin.Instance!.Configuration)
     {
     }
 
@@ -48,12 +56,14 @@ public partial class ChannelRenamer
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
     /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
+    /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
     /// <param name="getConfig">Returns the current configuration.</param>
-    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, Func<PluginConfiguration> getConfig)
+    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, Func<PluginConfiguration> getConfig)
     {
         _libraryManager = libraryManager;
         _logger = logger;
         _dispatcharr = dispatcharr;
+        _itemRepository = itemRepository;
         _getConfig = getConfig;
     }
 
@@ -168,6 +178,11 @@ public partial class ChannelRenamer
             if (channel.Number is not null && byNumber.TryGetValue(channel.Number, out var d))
             {
                 stats.Listed++;
+                if (config.UseChannelLogo)
+                {
+                    await EnsureLocalChannelLogoAsync(channel).ConfigureAwait(false);
+                }
+
                 var category = rules.For(d.Group);
                 if (ParseEvent(d.StreamName, eventRegex) is { } ev)
                 {
@@ -195,7 +210,7 @@ public partial class ChannelRenamer
                     // Regular channel: keep its name and real EPG; only sort its programs into a Programs-page row.
                     // Placeholders (title = the channel's own name) and ignored titles never get a row.
                     var names = new[] { original, d.Name, d.StreamName };
-                    await ApplyCategoryAsync(channel, category, names, ignoredTitles, config.ProgramWindowHours, now, stats, cancellationToken).ConfigureAwait(false);
+                    await ApplyCategoryAsync(channel, category, names, ignoredTitles, config.UseChannelLogo, config.ProgramWindowHours, now, stats, cancellationToken).ConfigureAwait(false);
                 }
             }
             else if (filterMatch is { Success: true })
@@ -277,6 +292,55 @@ public partial class ChannelRenamer
     }
 
     /// <summary>
+    /// Gives a program without its own image the channel's logo (a local file Jellyfin already has).
+    /// A real program image is never replaced; a logo the plugin set earlier follows the channel's current logo.
+    /// </summary>
+    /// <param name="program">The program.</param>
+    /// <param name="channel">Its channel.</param>
+    /// <returns>True when the program changed.</returns>
+    internal static bool ApplyChannelLogo(LiveTvProgram program, LiveTvChannel channel)
+    {
+        var current = program.GetImageInfo(ImageType.Primary, 0);
+        program.ProviderIds.TryGetValue(LogoKey, out var ours);
+        if (current is not null && current.Path != ours)
+        {
+            return false; // the program has its own image
+        }
+
+        var logo = channel.GetImageInfo(ImageType.Primary, 0);
+        if (logo is null || !logo.IsLocalFile)
+        {
+            if (current is null)
+            {
+                return false;
+            }
+
+            program.RemoveImage(current);
+            program.ProviderIds.Remove(LogoKey);
+            return true;
+        }
+
+        if (current?.Path == logo.Path)
+        {
+            return false;
+        }
+
+        program.SetImage(
+            new ItemImageInfo
+            {
+                Path = logo.Path,
+                Type = ImageType.Primary,
+                DateModified = logo.DateModified,
+                Width = logo.Width,
+                Height = logo.Height,
+                BlurHash = logo.BlurHash
+            },
+            0);
+        program.ProviderIds[LogoKey] = logo.Path;
+        return true;
+    }
+
+    /// <summary>
     /// Splits a comma-separated tag list.
     /// </summary>
     /// <param name="tags">e.g. "Live, Sports".</param>
@@ -347,18 +411,20 @@ public partial class ChannelRenamer
                 : program.Tags.Where(t => !gameTags.Contains(t, StringComparer.OrdinalIgnoreCase)).ToArray();
 
             var unchanged = program.Name == name && (program.Overview ?? string.Empty) == overview && program.Tags.SequenceEqual(tags);
+            var logoChanged = config.UseChannelLogo && ApplyChannelLogo(program, channel);
             program.Name = name;
             program.Overview = overview;
             program.Tags = tags;
 
             // The airing event also gets its group's category; placeholders get none.
             var categoryChanged = CategoryRules.Apply(program, isGame ? category : null);
-            if (unchanged && !categoryChanged)
+            if (unchanged && !categoryChanged && !logoChanged)
             {
                 continue;
             }
 
             await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+            await SaveImagesIfChangedAsync(program, logoChanged).ConfigureAwait(false);
             stats.ProgramsUpdated++;
         }
     }
@@ -368,6 +434,7 @@ public partial class ChannelRenamer
         ProgramCategory? category,
         string?[] channelNames,
         IReadOnlyCollection<string> ignoredTitles,
+        bool useChannelLogo,
         int windowHours,
         DateTime now,
         RunStats stats,
@@ -390,14 +457,50 @@ public partial class ChannelRenamer
             }
 
             // Apply(null) also undoes tags an earlier version put on placeholders.
-            if (!CategoryRules.Apply(program, placeholder ? null : category))
+            var categoryChanged = CategoryRules.Apply(program, placeholder ? null : category);
+            var logoChanged = useChannelLogo && ApplyChannelLogo(program, channel);
+            if (!categoryChanged && !logoChanged)
             {
                 continue;
             }
 
             await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+            await SaveImagesIfChangedAsync(program, logoChanged).ConfigureAwait(false);
             stats.ProgramsCategorized++;
         }
+    }
+
+    // Jellyfin can keep a channel logo as a remote URL and download it only when viewed. Programs reuse the
+    // channel's file, so have Jellyfin download it once. removeOnFailure: false keeps the logo if it fails.
+    private async Task EnsureLocalChannelLogoAsync(LiveTvChannel channel)
+    {
+        var logo = channel.GetImageInfo(ImageType.Primary, 0);
+        if (logo is null || logo.IsLocalFile)
+        {
+            return;
+        }
+
+        try
+        {
+            await _libraryManager.ConvertImageToLocal(channel, logo, 0, false).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.IO.IOException or TaskCanceledException or InvalidOperationException)
+        {
+            // InvalidOperationException: Jellyfin's "Unable to convert any images to local" (every URL 404/403).
+            _logger.LogWarning(ex, "Could not download the logo of channel '{Channel}'", channel.Name);
+        }
+    }
+
+    // Jellyfin 10.11 does not persist images of an existing item on update (only the item row), and
+    // ILibraryManager.UpdateImagesAsync skips non-library items such as Live TV programs. SaveImages writes them.
+    private Task SaveImagesIfChangedAsync(LiveTvProgram program, bool changed)
+    {
+        if (changed)
+        {
+            _itemRepository.SaveImages(program);
+        }
+
+        return Task.CompletedTask;
     }
 
     private async Task<IReadOnlyList<DispatcharrChannel>?> GetDispatcharrChannelsAsync(PluginConfiguration config, CancellationToken cancellationToken)

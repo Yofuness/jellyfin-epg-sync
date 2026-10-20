@@ -5,7 +5,8 @@ Serves <data>/channels.json, <data>/groups.json and <data>/streams.json:
   GET  /api/channels/channels/       -> channels.json
   GET  /api/channels/groups/         -> groups.json
   POST /api/channels/streams/by-ids/ -> streams.json filtered by {"ids": [...]}
-Requires an X-API-Key header, like the real API.
+  GET  /logos/<file>.png             -> <data>/logos/<file>.png (no key; like Dispatcharr's logo cache URLs)
+The API routes require an X-API-Key header, like the real API.
 Usage: fake_dispatcharr.py <data dir> [port]
 """
 import json
@@ -37,6 +38,19 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self):
+        if self.path.startswith("/logos/") and self.path.endswith(".png") and "/.." not in self.path:
+            try:
+                with open(f"{DATA}{self.path}", "rb") as f:
+                    payload = f.read()
+            except FileNotFoundError:
+                self._send(404, {"detail": "Not found."})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         if not self._authorized():
             return
         routes = {"/api/channels/channels/": "channels.json", "/api/channels/groups/": "groups.json"}

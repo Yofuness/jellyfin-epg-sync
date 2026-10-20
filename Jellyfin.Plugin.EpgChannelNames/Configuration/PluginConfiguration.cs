@@ -69,6 +69,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public string GameProgramTags { get; set; } = "Live,Sports";
 
     /// <summary>
+    /// Gets or sets a value indicating whether programs without an image get their channel's logo.
+    /// </summary>
+    public bool UseChannelLogo { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets how many hours ahead programs are checked.
     /// </summary>
     public int ProgramWindowHours { get; set; } = 12;
