@@ -84,6 +84,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool UseTeamNames { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether team-sport programs get a matchup image with both team logos.
+    /// </summary>
+    public bool UseMatchupImages { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets a value indicating whether back-to-back blocks of the same show on one channel get only one Programs-page card.
     /// </summary>
     public bool HideRepeatedPrograms { get; set; } = true;

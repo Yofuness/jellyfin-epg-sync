@@ -21,6 +21,17 @@ public static partial class TeamMatcher
     /// <param name="teams">The team database.</param>
     /// <returns>The new title, or null unless exactly two teams of one league are found.</returns>
     public static string? BuildTitle(string? title, string? overview, bool isSports, IReadOnlyList<Team> teams)
+        => Match(title, overview, isSports, teams)?.Title;
+
+    /// <summary>
+    /// Finds the two teams of a sports program and builds its title.
+    /// </summary>
+    /// <param name="title">Current program title.</param>
+    /// <param name="overview">Program description.</param>
+    /// <param name="isSports">Whether the program or its channel is known to be sports. Otherwise the text must name a league.</param>
+    /// <param name="teams">The team database.</param>
+    /// <returns>The teams in text order and the title, or null unless exactly two teams of one league are found.</returns>
+    public static TeamMatch? Match(string? title, string? overview, bool isSports, IReadOnlyList<Team> teams)
     {
         var text = Normalize(title + "\n" + overview);
         var named = League.All.Where(l => l.Keywords.Any(k => FindAll(text, Normalize(k)).Any())).Select(l => l.Key).ToHashSet();
@@ -75,12 +86,12 @@ public static partial class TeamMatcher
         var (league, pair) = candidates.FirstOrDefault(c => named.Contains(c.League.Key), candidates[0]);
         if (league.Key == "cricket")
         {
-            return $"{CricketFormat(text)}: {pair[0].ShortName} vs {pair[1].ShortName}{CricketDay(text)}";
+            return new TeamMatch(league, pair[0], pair[1], $"{CricketFormat(text)}: {pair[0].ShortName} vs {pair[1].ShortName}{CricketDay(text)}");
         }
 
         var label = league.Key == "gaa" ? GaaLabel(text) : league.Label;
         var live = title is not null && title.TrimStart().StartsWith("Live ", StringComparison.OrdinalIgnoreCase) ? "Live " : string.Empty;
-        return $"{live}{label}: {pair[0].ShortName} vs {pair[1].ShortName}";
+        return new TeamMatch(league, pair[0], pair[1], $"{live}{label}: {pair[0].ShortName} vs {pair[1].ShortName}");
     }
 
     // "Test Cricket", "ODI Cricket", "T20 Cricket" or "Cricket", from normalized text.

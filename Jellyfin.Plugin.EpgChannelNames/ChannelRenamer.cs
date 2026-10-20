@@ -42,6 +42,7 @@ public partial class ChannelRenamer
     private readonly IDispatcharrClient _dispatcharr;
     private readonly IItemRepository _itemRepository;
     private readonly ITeamDatabase? _teams;
+    private readonly IMatchupImages? _images;
     private readonly Func<PluginConfiguration> _getConfig;
 
     /// <summary>
@@ -52,8 +53,9 @@ public partial class ChannelRenamer
     /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
     /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
     /// <param name="teams">Instance of the <see cref="ITeamDatabase"/> interface.</param>
-    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, ITeamDatabase teams)
-        : this(libraryManager, logger, dispatcharr, itemRepository, () => Plugin.Instance!.Configuration, teams)
+    /// <param name="images">Instance of the <see cref="IMatchupImages"/> interface.</param>
+    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, ITeamDatabase teams, IMatchupImages images)
+        : this(libraryManager, logger, dispatcharr, itemRepository, () => Plugin.Instance!.Configuration, teams, images)
     {
     }
 
@@ -66,9 +68,11 @@ public partial class ChannelRenamer
     /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
     /// <param name="getConfig">Returns the current configuration.</param>
     /// <param name="teams">The team database, or null for none.</param>
-    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, Func<PluginConfiguration> getConfig, ITeamDatabase? teams = null)
+    /// <param name="images">Matchup images, or null for none.</param>
+    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, Func<PluginConfiguration> getConfig, ITeamDatabase? teams = null, IMatchupImages? images = null)
     {
         _teams = teams;
+        _images = images;
         _libraryManager = libraryManager;
         _logger = logger;
         _dispatcharr = dispatcharr;
@@ -136,7 +140,7 @@ public partial class ChannelRenamer
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var now = DateTime.UtcNow;
-        var teams = config.UseTeamNames && _teams is not null ? await _teams.GetTeamsAsync(cancellationToken).ConfigureAwait(false) : null;
+        var teams = (config.UseTeamNames || config.UseMatchupImages) && _teams is not null ? await _teams.GetTeamsAsync(cancellationToken).ConfigureAwait(false) : null;
 
         foreach (var line in rules.InvalidLines)
         {
@@ -213,7 +217,7 @@ public partial class ChannelRenamer
 
                     newName = BuildName(ev.Title is null ? config.NoProgramTemplate : config.NameTemplate, ev.Title, original, channel.Number, ev.Prefix);
                     var plainName = BuildName(config.NoProgramTemplate, null, original, channel.Number, ev.Prefix);
-                    await ApplyEventProgramsAsync(channel, config, ev.Title, d.StreamName!, plainName, category ?? ProgramCategory.Sports, now, stats, cancellationToken).ConfigureAwait(false);
+                    await ApplyEventProgramsAsync(channel, config, ev.Title, d.StreamName!, plainName, category ?? ProgramCategory.Sports, teams, now, stats, cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
@@ -311,6 +315,16 @@ public partial class ChannelRenamer
     /// <param name="channel">Its channel.</param>
     /// <returns>True when the program changed.</returns>
     internal static bool ApplyChannelLogo(LiveTvProgram program, LiveTvChannel channel)
+        => ApplyImage(program, ChannelLogo(channel, null));
+
+    /// <summary>
+    /// Sets the image the plugin chose for a program, or removes the plugin's image when <paramref name="wanted"/> is null.
+    /// A program's own image (from the EPG) is never replaced.
+    /// </summary>
+    /// <param name="program">The program.</param>
+    /// <param name="wanted">The image to show, e.g. a matchup card or the channel logo.</param>
+    /// <returns>Whether the program's image changed.</returns>
+    internal static bool ApplyImage(LiveTvProgram program, ItemImageInfo? wanted)
     {
         var current = program.GetImageInfo(ImageType.Primary, 0);
         program.ProviderIds.TryGetValue(LogoKey, out var ours);
@@ -319,8 +333,7 @@ public partial class ChannelRenamer
             return false; // the program has its own image
         }
 
-        var logo = channel.GetImageInfo(ImageType.Primary, 0);
-        if (logo is null || !logo.IsLocalFile)
+        if (wanted is null)
         {
             if (current is null)
             {
@@ -332,7 +345,7 @@ public partial class ChannelRenamer
             return true;
         }
 
-        if (current?.Path == logo.Path)
+        if (current?.Path == wanted.Path && current.DateModified == wanted.DateModified)
         {
             return false;
         }
@@ -340,16 +353,39 @@ public partial class ChannelRenamer
         program.SetImage(
             new ItemImageInfo
             {
-                Path = logo.Path,
+                Path = wanted.Path,
                 Type = ImageType.Primary,
-                DateModified = logo.DateModified,
-                Width = logo.Width,
-                Height = logo.Height,
-                BlurHash = logo.BlurHash
+                DateModified = wanted.DateModified,
+                Width = wanted.Width,
+                Height = wanted.Height,
+                BlurHash = wanted.BlurHash
             },
             0);
-        program.ProviderIds[LogoKey] = logo.Path;
+        program.ProviderIds[LogoKey] = wanted.Path;
         return true;
+    }
+
+    // The channel's logo when it's a local file and the setting is on (null config = on).
+    private static ItemImageInfo? ChannelLogo(LiveTvChannel channel, PluginConfiguration? config)
+        => config is { UseChannelLogo: false } ? null
+            : channel.GetImageInfo(ImageType.Primary, 0) is { IsLocalFile: true } logo ? logo : null;
+
+    private async Task<ItemImageInfo?> GetMatchupImageAsync(TeamMatch? match, CancellationToken cancellationToken)
+    {
+        if (match is null || _images is null)
+        {
+            return null;
+        }
+
+        var path = await _images.GetAsync(match.First, match.Second, cancellationToken).ConfigureAwait(false);
+        return path is null ? null : new ItemImageInfo
+        {
+            Path = path,
+            Type = ImageType.Primary,
+            DateModified = System.IO.File.GetLastWriteTimeUtc(path),
+            Width = MatchupImages.Width,
+            Height = MatchupImages.Height
+        };
     }
 
     /// <summary>
@@ -376,10 +412,14 @@ public partial class ChannelRenamer
         string streamName,
         string plainName,
         ProgramCategory category,
+        IReadOnlyList<Team>? teams,
         DateTime now,
         RunStats stats,
         CancellationToken cancellationToken)
     {
+        // The event title names the teams ("ANAHEIM DUCKS @ NEW YORK RANGERS"); one image for the airing block.
+        var match = config.UseMatchupImages && title is not null && teams is not null ? TeamMatcher.Match(title, null, true, teams) : null;
+        var matchup = await GetMatchupImageAsync(match, cancellationToken).ConfigureAwait(false);
         var gameTags = ParseTags(config.GameProgramTags);
         var programs = _libraryManager.GetItemList(new InternalItemsQuery
         {
@@ -423,7 +463,7 @@ public partial class ChannelRenamer
                 : program.Tags.Where(t => !gameTags.Contains(t, StringComparer.OrdinalIgnoreCase)).ToArray();
 
             var unchanged = program.Name == name && (program.Overview ?? string.Empty) == overview && program.Tags.SequenceEqual(tags);
-            var logoChanged = config.UseChannelLogo && ApplyChannelLogo(program, channel);
+            var logoChanged = ApplyImage(program, (isGame ? matchup : null) ?? ChannelLogo(channel, config));
             program.Name = name;
             program.Overview = overview;
             program.Tags = tags;
@@ -473,7 +513,7 @@ public partial class ChannelRenamer
 
             // Sports-ness before this run's category change, so a hidden repeat still gets team names.
             var isSports = category == ProgramCategory.Sports || program.IsSports;
-            var titleChanged = ApplyTeamTitle(program, placeholder ? null : teams, isSports);
+            var titleChanged = ApplyTeamTitle(program, placeholder || !config.UseTeamNames ? null : teams, isSports);
             if (titleChanged)
             {
                 stats.ProgramsRetitled++;
@@ -491,7 +531,11 @@ public partial class ChannelRenamer
             // Apply(null) also undoes tags an earlier version put on placeholders and repeats.
             var categoryChanged = CategoryRules.Apply(program, placeholder || repeat ? null : category);
 
-            var logoChanged = config.UseChannelLogo && ApplyChannelLogo(program, channel);
+            var match = config.UseMatchupImages && !placeholder && teams is not null
+                ? TeamMatcher.Match(program.ProviderIds.GetValueOrDefault(TitleOriginalKey) ?? program.Name, program.Overview, isSports, teams)
+                : null;
+            var matchup = await GetMatchupImageAsync(match, cancellationToken).ConfigureAwait(false);
+            var logoChanged = ApplyImage(program, matchup ?? ChannelLogo(channel, config));
             if (!categoryChanged && !logoChanged && !titleChanged)
             {
                 continue;

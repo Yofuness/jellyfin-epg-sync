@@ -20,6 +20,10 @@
           <div class="fieldDescription">"Live NHL Ice Hockey" becomes "Live NHL Hockey: Flyers vs Avalanche" when the description names the teams. NHL, NFL, NBA, MLB, MLS, major UK/EU soccer and rugby, GAA, cricket (Test Cricket: South Africa vs Australia · Day 3) and F1 (F1: United States GP 2018). Team list from ESPN, refreshed monthly.</div>
         </div>
         <div class="checkboxContainer checkboxContainer-withDescription">
+          <label><input is="emby-checkbox" type="checkbox" id="UseMatchupImages" /><span>Team logos on sports programs</span></label>
+          <div class="fieldDescription">Games where both teams are known get a card with both team logos (from ESPN). Real program images are never replaced.</div>
+        </div>
+        <div class="checkboxContainer checkboxContainer-withDescription">
           <label><input is="emby-checkbox" type="checkbox" id="UseChannelLogo" /><span>Use the channel logo for programs without an image</span></label>
           <div class="fieldDescription">Makes Programs-page cards recognizable. Real program images are never replaced.</div>
         </div>
@@ -163,6 +167,7 @@
           page.querySelector('#RemoveNoGamePrograms').checked = config.RemoveNoGamePrograms;
           page.querySelector('#UseChannelLogo').checked = config.UseChannelLogo;
           page.querySelector('#UseTeamNames').checked = config.UseTeamNames;
+          page.querySelector('#UseMatchupImages').checked = config.UseMatchupImages;
           page.querySelector('#HideRepeatedPrograms').checked = config.HideRepeatedPrograms;
           page.querySelector('#AutoGroupCategories').checked = config.AutoGroupCategories;
           Dashboard.hideLoadingMsg();
@@ -182,6 +187,7 @@
           config.RemoveNoGamePrograms = page.querySelector('#RemoveNoGamePrograms').checked;
           config.UseChannelLogo = page.querySelector('#UseChannelLogo').checked;
           config.UseTeamNames = page.querySelector('#UseTeamNames').checked;
+          config.UseMatchupImages = page.querySelector('#UseMatchupImages').checked;
           config.HideRepeatedPrograms = page.querySelector('#HideRepeatedPrograms').checked;
           config.AutoGroupCategories = page.querySelector('#AutoGroupCategories').checked;
           ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);

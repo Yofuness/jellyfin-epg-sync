@@ -127,8 +127,10 @@ JSON
 mkdir -p "$WORK/fake/espn/hockey/nhl"
 cat > "$WORK/fake/espn/hockey/nhl/teams" <<'JSON'
 {"sports":[{"leagues":[{"teams":[
- {"team":{"displayName":"Philadelphia Flyers","shortDisplayName":"Flyers","name":"Flyers","location":"Philadelphia"}},
- {"team":{"displayName":"Colorado Avalanche","shortDisplayName":"Avalanche","name":"Avalanche","location":"Colorado"}}]}]}]}
+ {"team":{"displayName":"Philadelphia Flyers","shortDisplayName":"Flyers","name":"Flyers","location":"Philadelphia","logos":[{"href":"http://dispatcharr:8000/logos/history.png"}]}},
+ {"team":{"displayName":"Colorado Avalanche","shortDisplayName":"Avalanche","name":"Avalanche","location":"Colorado","logos":[{"href":"http://dispatcharr:8000/logos/history.png"}]}},
+ {"team":{"displayName":"Anaheim Ducks","shortDisplayName":"Ducks","name":"Ducks","location":"Anaheim","logos":[{"href":"http://dispatcharr:8000/logos/history.png"}]}},
+ {"team":{"displayName":"New York Rangers","shortDisplayName":"Rangers","name":"Rangers","location":"New York","logos":[{"href":"http://dispatcharr:8000/logos/history.png"}]}}]}]}]}
 JSON
 # A provider-style stale event, two days old.
 sed -i "s/STALE_DATE/$(date -u -d '-2 days' '+%b %-d' | tr a-z A-Z)/" "$WORK/fake/streams.json"
@@ -213,6 +215,7 @@ rename_and_wait() {
   curl -sf -X POST "$J/ScheduledTasks/Running/$RENAME_ID" -H "$A" >/dev/null
   sleep 4
 }
+channel_id() { curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"].startswith(sys.argv[1])))' "$1"; }
 channel_id_exact() { curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"]==sys.argv[1]))' "$1"; }
 USER_ID=$(curl -sf "$J/Users" -H "$A" | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["Id"])')
 row() { # web Programs page row query -> program names
@@ -259,12 +262,22 @@ if grep -qxF "Live NHL Hockey: Flyers vs Avalanche" <<<"$TITLES"; then echo "PAS
   docker logs "$NAME" 2>&1 | grep -iE "team|EpgChannelNames.*(WRN|ERR)" | tail -6
   exit 1
 fi
+# Matchup images: team program and NHL event game get a 960x540 "logo vs logo" card.
+image_size() { # $1 = channel id, $2 = program name -> "WxH" of its served image
+  local id; id=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$1" -H "$A" | python3 -c 'import json,sys;print(next(i["Id"] for i in json.load(sys.stdin)["Items"] if i["Name"]==sys.argv[1]))' "$2")
+  curl -sf "$J/Items/$id/Images/Primary" -H "$A" -o "$WORK/img" && python3 -c 'import struct,sys;d=open(sys.argv[1],"rb").read(24);print("%dx%d"%struct.unpack(">II",d[16:24]) if d[:4]==b"\x89PNG" else "not-png")' "$WORK/img"
+}
+for pair in "$PREMIER_ID|Live NHL Hockey: Flyers vs Avalanche" "$(channel_id "CA - NHL GAME 01")|ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT"; do
+  SIZE=$(image_size "${pair%%|*}" "${pair#*|}")
+  if [[ "$SIZE" == 960x540 ]]; then echo "PASS: matchup image on '${pair#*|}'"; else
+    echo "FAIL: matchup image on '${pair#*|}': $SIZE"; docker logs "$NAME" 2>&1 | grep -iE "matchup|logo|skia" | tail -6; exit 1
+  fi
+done
 # Placeholder (program titled like its own channel) on a ruled channel stays out of the row.
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "CA - STINGRAY NATURE" 0
 
 # No-event channel: airing placeholder removed, channel kept.
 expect "CA - NHL GAME 07"
-channel_id() { curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"].startswith(sys.argv[1])))' "$1"; }
 program_count() { curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$1" -H "$A" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["Items"]))'; }
 NOGAME_PROGS=$(program_count "$(channel_id "CA - NHL GAME 07")")
 if [[ "$NOGAME_PROGS" == 0 ]]; then echo "PASS: no-event placeholder removed"; else echo "FAIL: no-event channel still has $NOGAME_PROGS programs"; exit 1; fi

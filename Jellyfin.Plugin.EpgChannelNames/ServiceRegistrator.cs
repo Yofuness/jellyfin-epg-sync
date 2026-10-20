@@ -16,6 +16,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton<IDispatcharrClient, DispatcharrClient>();
         serviceCollection.AddSingleton<ITeamDatabase, TeamDatabase>();
+        serviceCollection.AddSingleton<IMatchupImages, MatchupImages>();
         serviceCollection.AddSingleton<ChannelRenamer>();
         serviceCollection.AddHostedService<GuideRefreshListener>();
     }

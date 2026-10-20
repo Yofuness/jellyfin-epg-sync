@@ -12,6 +12,8 @@
          will not load on servers older than 10.11.N. Never use a wildcard here. -->
     <PackageReference Include="Jellyfin.Controller" Version="10.11.0" ExcludeAssets="runtime" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.0" ExcludeAssets="runtime" />
+    <!-- Jellyfin 10.11.0 ships exactly this SkiaSharp (and its native library); never bundle it. -->
+    <PackageReference Include="SkiaSharp" Version="3.116.1" ExcludeAssets="runtime" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="SerilogAnalyzer" Version="0.15.0" PrivateAssets="All" />
