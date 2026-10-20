@@ -34,10 +34,14 @@
           <input is="emby-input" type="number" id="StaleEventHours" min="0" label="Ignore events that started more than this many hours ago" />
           <div class="fieldDescription">Read from the title, e.g. <code>OCT 17 – 5:00 PM UK</code>. Providers often leave finished events in stream names. 0 = off. Titles without a date are never ignored.</div>
         </div>
+        <div class="checkboxContainer checkboxContainer-withDescription">
+          <label><input is="emby-checkbox" type="checkbox" id="AutoGroupCategories" /><span>Sort channels into Programs page rows automatically</span></label>
+          <div class="fieldDescription">Picks the row from the Dispatcharr group name: SPORTS, NHL, PPV… = Sports; NEWS = News; KIDS, CARTOON = Kids; MOVIES, CINEMA = Movies; DOCUMENTARY, ENTERTAINMENT… = Shows. Groups that match nothing get no row. Rules below win.</div>
+        </div>
         <div class="inputContainer">
-          <label class="textareaLabel" for="GroupCategoryRules">Programs page rows by Dispatcharr group</label>
+          <label class="textareaLabel" for="GroupCategoryRules">Row rules (optional, override the automatic row)</label>
           <textarea is="emby-textarea" id="GroupCategoryRules" rows="6" style="width:100%;font-family:monospace"></textarea>
-          <div class="fieldDescription">One per line: <code>Dispatcharr group = Shows|Movies|Sports|News|Kids</code>, e.g. <code>AM | CA | DOCUMENTARY = Shows</code>. Programs on those channels appear in that row. Removing a rule undoes it. Unknown groups are logged with the list of real ones.</div>
+          <div class="fieldDescription">One per line: <code>Dispatcharr group = Shows|Movies|Sports|News|Kids|None</code>, e.g. <code>AM | CA | DOCUMENTARY = Shows</code>. <code>None</code> keeps a group out of all rows. Programs on those channels appear in that row. Removing a rule undoes it. Unknown groups are logged with the list of real ones.</div>
         </div>
         <div class="inputContainer">
           <label class="textareaLabel" for="IgnoredProgramTitles">Never categorize programs titled</label>
@@ -87,6 +91,7 @@
           page.querySelector('#RemoveNoGamePrograms').checked = config.RemoveNoGamePrograms;
           page.querySelector('#UseChannelLogo').checked = config.UseChannelLogo;
           page.querySelector('#UseTeamNames').checked = config.UseTeamNames;
+          page.querySelector('#AutoGroupCategories').checked = config.AutoGroupCategories;
           Dashboard.hideLoadingMsg();
         });
       });
@@ -102,6 +107,7 @@
           config.RemoveNoGamePrograms = page.querySelector('#RemoveNoGamePrograms').checked;
           config.UseChannelLogo = page.querySelector('#UseChannelLogo').checked;
           config.UseTeamNames = page.querySelector('#UseTeamNames').checked;
+          config.AutoGroupCategories = page.querySelector('#AutoGroupCategories').checked;
           ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
         });
         return false;

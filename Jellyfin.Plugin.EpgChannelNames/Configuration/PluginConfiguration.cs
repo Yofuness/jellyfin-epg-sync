@@ -49,6 +49,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public string GroupCategoryRules { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets a value indicating whether groups without a rule get a row guessed from their name ("SPORTS" = Sports, "DOCUMENTARY" = Shows).
+    /// </summary>
+    public bool AutoGroupCategories { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets program titles that are never categorized, one per line (case-insensitive).
     /// </summary>
     public string IgnoredProgramTitles { get; set; } = "Channel No Longer Available";

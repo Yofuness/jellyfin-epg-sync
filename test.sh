@@ -202,7 +202,7 @@ set_dispatcharr() {
     | python3 -c '
 import json,sys
 c=json.load(sys.stdin)
-c.update(DispatcharrUrl=sys.argv[1], DispatcharrApiKey="test-key", ChannelNameRegex="", GroupCategoryRules="AM | CA | DOCUMENTARY = Shows")
+c.update(DispatcharrUrl=sys.argv[1], DispatcharrApiKey="test-key", ChannelNameRegex="", GroupCategoryRules="")
 print(json.dumps(c))' "$1" \
     | curl -sf -X POST "$J/Plugins/$PLUGIN_ID/Configuration" -H "$H" -H "$A" -d @- >/dev/null
 }
@@ -274,9 +274,9 @@ assert later["Name"] == "CA - NHL GAME 01", later["Name"]
 assert not later.get("Overview"), later.get("Overview")
 print("PASS: airing block has event + stream description; later block is plain")'
 
-# Removing the rule takes History out of the Shows row again.
+# Automatic rows put DOCUMENTARY in Shows (checked above, no rules set); a "= None" rule takes it out again.
 curl -sf "$J/Plugins/$PLUGIN_ID/Configuration" -H "$A" \
-  | python3 -c 'import json,sys;c=json.load(sys.stdin);c["GroupCategoryRules"]="";print(json.dumps(c))' \
+  | python3 -c 'import json,sys;c=json.load(sys.stdin);c["GroupCategoryRules"]="AM | CA | DOCUMENTARY = None";print(json.dumps(c))' \
   | curl -sf -X POST "$J/Plugins/$PLUGIN_ID/Configuration" -H "$H" -H "$A" -d @- >/dev/null
 rename_and_wait
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "Pawn Stars" 0

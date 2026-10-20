@@ -140,7 +140,7 @@ public partial class ChannelRenamer
 
         foreach (var line in rules.InvalidLines)
         {
-            _logger.LogWarning("Ignoring category rule '{Line}'. Use 'Dispatcharr group = Shows|Movies|Sports|News|Kids'", line);
+            _logger.LogWarning("Ignoring category rule '{Line}'. Use 'Dispatcharr group = Shows|Movies|Sports|News|Kids|None'", line);
         }
 
         var dispatcharr = await GetDispatcharrChannelsAsync(config, cancellationToken).ConfigureAwait(false);
@@ -193,7 +193,7 @@ public partial class ChannelRenamer
                     await EnsureLocalChannelLogoAsync(channel).ConfigureAwait(false);
                 }
 
-                var category = rules.For(d.Group);
+                var category = rules.Resolve(d.Group, config.AutoGroupCategories);
                 if (ParseEvent(d.StreamName, eventRegex) is { } ev)
                 {
                     // Providers leave finished events in stream names for days; past ones count as "nothing on".

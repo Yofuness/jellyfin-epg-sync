@@ -559,6 +559,7 @@ public class ChannelRenamerTests
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
         _config.ChannelNameRegex = string.Empty;
+        _config.AutoGroupCategories = false; // removing the rule must undo it, not fall back to the guess
         _config.GroupCategoryRules = "AM | CA | DOCUMENTARY = Shows";
         var channel = AddChannel("CA - HISTORY HD", "Pawn Stars", number: "30");
         _streamNames["30"] = "CA - HISTORY HD";

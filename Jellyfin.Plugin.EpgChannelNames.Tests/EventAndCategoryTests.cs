@@ -180,4 +180,41 @@ public class EventAndCategoryTests
     {
         Assert.Equal(expected, Plugin.IsOldDefaultRegex(regex));
     }
+
+    [Theory]
+    // The user's real groups.
+    [InlineData("AM | CA | DOCUMENTARY", ProgramCategory.Shows)]
+    [InlineData("AM | CA | NHL PPV", ProgramCategory.Sports)]
+    [InlineData("EU | UK | SKY SPORTS+", ProgramCategory.Sports)]
+    [InlineData("EU | UK | SPORTS", ProgramCategory.Sports)]
+    [InlineData("EU | UK | TNT SPORTS", ProgramCategory.Sports)]
+    [InlineData("AM | CA | NEWS", ProgramCategory.News)]
+    [InlineData("UK | SPORTS NEWS", ProgramCategory.News)]
+    [InlineData("US | KIDS MOVIES", ProgramCategory.Kids)]
+    [InlineData("UK | SKY CINEMA", ProgramCategory.Movies)]
+    public void Guess_FromGroupName(string group, ProgramCategory expected)
+    {
+        Assert.Equal(expected, CategoryRules.Guess(group));
+    }
+
+    [Theory]
+    [InlineData("EU | UK | MUSIC")]
+    [InlineData("AM | CA | ENTERTAINMENT2")]
+    [InlineData(null)]
+    public void Guess_UnknownGroup_NoRow(string? group)
+    {
+        Assert.Null(CategoryRules.Guess(group));
+    }
+
+    [Fact]
+    public void Resolve_RuleWinsOverGuess_AndNoneDisables()
+    {
+        var rules = CategoryRules.Parse("AM | CA | DOCUMENTARY = None\nEU | UK | SPORTS = Shows");
+
+        Assert.Null(rules.Resolve("AM | CA | DOCUMENTARY", true));
+        Assert.Equal(ProgramCategory.Shows, rules.Resolve("EU | UK | SPORTS", true));
+        Assert.Equal(ProgramCategory.Sports, rules.Resolve("AM | CA | NHL PPV", true));
+        Assert.Null(rules.Resolve("AM | CA | NHL PPV", false));
+        Assert.Empty(rules.InvalidLines);
+    }
 }

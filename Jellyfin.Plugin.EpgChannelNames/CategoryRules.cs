@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
 using MediaBrowser.Controller.LiveTv;
 
@@ -30,15 +31,15 @@ public enum ProgramCategory
 /// <summary>
 /// "Dispatcharr group = Category" rules, and applying a category to a program reversibly.
 /// </summary>
-public sealed class CategoryRules
+public sealed partial class CategoryRules
 {
     // What the plugin itself changed on a program, so a removed or changed rule can be undone
     // without touching flags that came from the EPG. Comma-separated actions: "series", "movie", "tag:Sports".
     internal const string MarkerKey = "EpgChannelNames.Category";
 
-    private readonly Dictionary<string, ProgramCategory> _byGroup;
+    private readonly Dictionary<string, ProgramCategory?> _byGroup;
 
-    private CategoryRules(Dictionary<string, ProgramCategory> byGroup, IReadOnlyList<string> invalidLines)
+    private CategoryRules(Dictionary<string, ProgramCategory?> byGroup, IReadOnlyList<string> invalidLines)
     {
         _byGroup = byGroup;
         InvalidLines = invalidLines;
@@ -62,7 +63,7 @@ public sealed class CategoryRules
     /// <returns>The parsed rules.</returns>
     public static CategoryRules Parse(string? text)
     {
-        var byGroup = new Dictionary<string, ProgramCategory>(StringComparer.OrdinalIgnoreCase);
+        var byGroup = new Dictionary<string, ProgramCategory?>(StringComparer.OrdinalIgnoreCase);
         var invalid = new List<string>();
         foreach (var raw in (text ?? string.Empty).Split('\n'))
         {
@@ -74,6 +75,12 @@ public sealed class CategoryRules
 
             var eq = line.LastIndexOf('=');
             var group = eq > 0 ? DispatcharrClient.NormalizeGroupName(line[..eq]) : string.Empty;
+            if (group.Length > 0 && line[(eq + 1)..].Trim().Equals("None", StringComparison.OrdinalIgnoreCase))
+            {
+                byGroup[group] = null;
+                continue;
+            }
+
             if (group.Length == 0 || !Enum.TryParse<ProgramCategory>(line[(eq + 1)..].Trim(), true, out var category) || !Enum.IsDefined(category))
             {
                 invalid.Add(line);
@@ -93,6 +100,37 @@ public sealed class CategoryRules
     /// <returns>The category, or null.</returns>
     public ProgramCategory? For(string? group)
         => group is not null && _byGroup.TryGetValue(group, out var c) ? c : null;
+
+    /// <summary>
+    /// Gets the category for a Dispatcharr group: its rule if there is one ("= None" means no row), otherwise
+    /// a guess from the group name when <paramref name="guess"/> is on.
+    /// </summary>
+    /// <param name="group">Normalized group name.</param>
+    /// <param name="guess">Whether to guess for groups without a rule.</param>
+    /// <returns>The category, or null.</returns>
+    public ProgramCategory? Resolve(string? group, bool guess)
+        => group is not null && _byGroup.TryGetValue(group, out var c) ? c : guess ? Guess(group) : null;
+
+    /// <summary>
+    /// Guesses a category from words in a group name, e.g. "EU | UK | SKY SPORTS+" is Sports.
+    /// </summary>
+    /// <param name="group">Group name.</param>
+    /// <returns>The category, or null when no word matches.</returns>
+    public static ProgramCategory? Guess(string? group)
+    {
+        if (string.IsNullOrWhiteSpace(group))
+        {
+            return null;
+        }
+
+        // Kids and News first: "KIDS MOVIES" is Kids, "SPORTS NEWS" is News.
+        return KidsRegex().IsMatch(group) ? ProgramCategory.Kids
+            : NewsRegex().IsMatch(group) ? ProgramCategory.News
+            : SportsRegex().IsMatch(group) ? ProgramCategory.Sports
+            : MoviesRegex().IsMatch(group) ? ProgramCategory.Movies
+            : ShowsRegex().IsMatch(group) ? ProgramCategory.Shows
+            : null;
+    }
 
     /// <summary>
     /// Makes <paramref name="program"/> carry exactly <paramref name="category"/> as far as the plugin is concerned:
@@ -202,4 +240,19 @@ public sealed class CategoryRules
             p.IsMovie,
             string.Join(',', p.Tags),
             p.ProviderIds.GetValueOrDefault(MarkerKey) ?? string.Empty);
+
+    [GeneratedRegex(@"\b(KIDS?|CHILDREN|CARTOONS?|JUNIOR|TODDLERS?)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex KidsRegex();
+
+    [GeneratedRegex(@"\bNEWS\b", RegexOptions.IgnoreCase)]
+    private static partial Regex NewsRegex();
+
+    [GeneratedRegex(@"\b(SPORTS?|NHL|NFL|NBA|MLB|MLS|PPV|GAA|F1|FORMULA|FOOTBALL|SOCCER|RUGBY|HOCKEY|CRICKET|GOLF|TENNIS|BOXING|UFC|WWE|RACING|ESPN|TSN|DAZN|EPL)", RegexOptions.IgnoreCase)]
+    private static partial Regex SportsRegex();
+
+    [GeneratedRegex(@"\b(MOVIES?|CINEMA|FILMS?)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex MoviesRegex();
+
+    [GeneratedRegex(@"\b(DOCUMENTAR(Y|IES)|ENTERTAINMENT|SERIES|SHOWS?|LIFESTYLE|NATURE|HISTORY|REALITY|COMEDY|DRAMA|GENERAL)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex ShowsRegex();
 }

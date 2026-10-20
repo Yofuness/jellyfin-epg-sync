@@ -16,9 +16,9 @@ That's all. It runs after every guide refresh and every 15 minutes. To see it ri
 - **Finished events** left in stream names (start time more than 6 hours ago) count as nothing on.
 - **Team names**: generic sports titles like "Live NHL Ice Hockey" get the teams from the description. Team list from ESPN, refreshed monthly.
 - **Program images**: programs without an image use the channel logo.
+- **Programs page rows**: each channel's programs go into a row picked from its Dispatcharr group name (`… SPORTS` / `NHL PPV` = Sports, `DOCUMENTARY` = Shows, `NEWS` = News, `KIDS` = Kids, `MOVIES` / `CINEMA` = Movies). Groups that match nothing get no row.
 - Placeholder programs (titled like their channel, or "Channel No Longer Available") are left alone.
 
-Not on by default: sorting regular channels into Programs-page rows (Shows, Movies, News, Kids, Sports). See [Programs page rows by group](#configure).
 
 ## Install (plugin repository) in detail
 1. Dashboard → Plugins → Repositories (or Catalog → gear icon) → **+**
@@ -57,13 +57,14 @@ The plugin reads every Dispatcharr channel (3 requests) and matches Jellyfin cha
 
 **Regular channels** keep their names and guide. Sports programs with a generic title get the teams from their description: "Live NHL Ice Hockey" + "Philadelphia Flyers v Colorado Avalanche" becomes **Live NHL: Flyers vs Avalanche**. Covers NHL, NFL, NBA, MLB, MLS, Premier League, Championship, LaLiga, Champions League, Premiership Rugby, URC, Champions Cup and GAA counties. Teams come from ESPN's public API (no key) and are refreshed monthly by the *Refresh sports team list* scheduled task. Only programs with exactly two teams of one league are renamed. Turn it off with *Put team names in sports program titles*; the EPG titles come back.
 
-**Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. Map Dispatcharr groups to rows, one per line:
+**Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. The row is picked automatically from the group name (setting *Sort channels into Programs page rows automatically*). Only if a guess is wrong, add a rule, one per line; `None` keeps a group out of all rows:
 ```
 AM | CA | DOCUMENTARY = Shows
 AM | CA | NHL PPV = Sports
 EU | UK | TNT SPORTS = Sports
 EU | UK | SKY SPORTS+ = Sports
 EU | UK | SPORTS = Sports
+UK | MUSIC SHOWS = None
 ```
 Group names must match Dispatcharr (spaces don't matter; a typo is logged with the real group names). Removing a rule undoes it. Programs on regular channels keep their real titles; only the row changes.
 
