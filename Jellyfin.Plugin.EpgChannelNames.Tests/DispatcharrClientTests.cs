@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.EpgChannelNames.Dispatcharr;
@@ -17,49 +18,87 @@ public class DispatcharrClientTests
     // Shapes copied from Dispatcharr 0.32 responses.
     private const string ChannelsJson = """
         [
-          {"id": 3988, "name": "CA - NHL GAME 01 : BUFFALO SABRES @ TORONTO MAPLE LEAFS OCT 15", "channel_number": 220.0, "streams": [82814]},
-          {"id": 16, "name": "CA - NHL GAME 01", "channel_number": 16.0, "streams": [82814]},
-          {"id": 17, "name": "CA - NHL GAME 05", "channel_number": 12.0, "streams": []},
-          {"id": 1, "name": "CBC News", "channel_number": 5.0, "streams": [1]},
-          {"id": 2, "name": "NHL GAME 99", "channel_number": null, "streams": [2]},
-          {"id": 3, "name": "NHL GAME 98", "channel_number": 2.5, "streams": [3]}
+          {"id": 3784, "name": "CA - NHL GAME 01", "channel_number": 16.0, "channel_group_id": 1072, "streams": [82814, 9]},
+          {"id": 17, "name": "CA - HISTORY HD", "channel_number": 30.0, "channel_group_id": 5, "streams": [500]},
+          {"id": 18, "name": "No streams", "channel_number": 12.0, "channel_group_id": null, "streams": []},
+          {"id": 2, "name": "No number", "channel_number": null, "channel_group_id": 5, "streams": [2]},
+          {"id": 3, "name": "Half", "channel_number": 2.5, "channel_group_id": 999, "streams": [3]}
         ]
         """;
 
-    private const string GameStreamJson = """[{"id": 82814, "name": "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19"}, {"id": 9, "name": "backup"}]""";
+    private const string GroupsJson = "[{\"id\": 1072, \"name\": \"AM | CA | NHL PPV\", \"channel_count\": 15}, {\"id\": 5, \"name\": \"AM | CA | DOCUMENTARY\"}]";
+
+    private const string StreamsJson = """
+        [{"id": 82814, "name": "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19"},
+         {"id": 500, "name": "CA - HISTORY HD"},
+         {"id": 3, "name": "half"}]
+        """;
 
     [Fact]
-    public async Task ReturnsFirstStreamName_KeyedByChannelNumber()
+    public async Task ReturnsChannelsWithGroupAndFirstStream()
     {
-        var handler = new FakeHandler(new Dictionary<string, string>
-        {
-            ["/api/channels/channels/"] = ChannelsJson,
-            ["/api/channels/channels/3988/streams/"] = GameStreamJson,
-            ["/api/channels/channels/16/streams/"] = GameStreamJson,
-            ["/api/channels/channels/17/streams/"] = "[]",
-            ["/api/channels/channels/3/streams/"] = """[{"id": 3, "name": "half"}]""",
-        });
+        var handler = DefaultHandler();
 
-        var result = await CreateClient(handler).GetStreamNamesByChannelNumberAsync(
-            "http://dispatcharr:9191/", "secret", new Regex("NHL GAME \\d+"), CancellationToken.None);
+        var result = await CreateClient(handler).GetChannelsAsync("http://dispatcharr:9191/", "secret", CancellationToken.None);
 
-        Assert.Equal("CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19", result["220"]);
-        Assert.Equal("CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19", result["16"]);
-        Assert.Equal("half", result["2.5"]);
-        Assert.False(result.ContainsKey("12")); // no streams
-        Assert.False(result.ContainsKey("5"));  // filtered out by regex
-        Assert.DoesNotContain("/api/channels/channels/1/streams/", handler.Requested);
-        Assert.DoesNotContain("/api/channels/channels/2/streams/", handler.Requested); // no channel number
+        var nhl = result.Single(c => c.Number == "16");
+        Assert.Equal("CA - NHL GAME 01", nhl.Name);
+        Assert.Equal("AM | CA | NHL PPV", nhl.Group); // NBSPs normalized
+        Assert.Equal("CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19", nhl.StreamName);
+        Assert.Equal("AM | CA | DOCUMENTARY", result.Single(c => c.Number == "30").Group);
+        Assert.Null(result.Single(c => c.Number == "12").StreamName);   // no streams
+        Assert.Null(result.Single(c => c.Number == "2.5").Group);       // unknown group id
+        Assert.DoesNotContain(result, c => c.Name == "No number");
+    }
+
+    [Fact]
+    public async Task UsesThreeRequests_AndAsksOnlyForFirstStreams()
+    {
+        var handler = DefaultHandler();
+
+        await CreateClient(handler).GetChannelsAsync("http://dispatcharr:9191", "secret", CancellationToken.None);
+
+        Assert.Equal(
+            new[] { "GET /api/channels/channels/", "GET /api/channels/groups/", "POST /api/channels/streams/by-ids/" },
+            handler.Requested);
+        var ids = JsonDocument.Parse(handler.LastBody!).RootElement.GetProperty("ids").EnumerateArray().Select(e => e.GetInt32()).ToArray();
+        Assert.Equal(new[] { 82814, 500, 2, 3 }, ids); // first stream only (not 9)
+    }
+
+    [Fact]
+    public async Task BulkRequest_HasContentLength()
+    {
+        // Simple HTTP servers read bodies by Content-Length only; a chunked body would arrive empty there.
+        var handler = DefaultHandler();
+
+        await CreateClient(handler).GetChannelsAsync("http://dispatcharr:9191", "secret", CancellationToken.None);
+
+        Assert.Equal(handler.LastBody!.Length, handler.LastContentLength);
     }
 
     [Fact]
     public async Task SendsApiKeyHeader()
     {
-        var handler = new FakeHandler(new Dictionary<string, string> { ["/api/channels/channels/"] = "[]" });
+        var handler = DefaultHandler();
 
-        await CreateClient(handler).GetStreamNamesByChannelNumberAsync("http://dispatcharr:9191", "secret", new Regex("x"), CancellationToken.None);
+        await CreateClient(handler).GetChannelsAsync("http://dispatcharr:9191", "secret", CancellationToken.None);
 
         Assert.Equal("secret", handler.LastApiKey);
+    }
+
+    [Fact]
+    public async Task NoStreams_SkipsBulkRequest()
+    {
+        var handler = new FakeHandler(new Dictionary<string, string>
+        {
+            ["GET /api/channels/channels/"] = """[{"id": 1, "name": "x", "channel_number": 1.0, "streams": []}]""",
+            ["GET /api/channels/groups/"] = "[]",
+        });
+
+        var result = await CreateClient(handler).GetChannelsAsync("http://dispatcharr:9191", "k", CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.DoesNotContain("POST /api/channels/streams/by-ids/", handler.Requested);
     }
 
     [Fact]
@@ -68,7 +107,7 @@ public class DispatcharrClientTests
         var handler = new FakeHandler(new Dictionary<string, string>()); // everything 404
 
         await Assert.ThrowsAsync<HttpRequestException>(() => CreateClient(handler)
-            .GetStreamNamesByChannelNumberAsync("http://dispatcharr:9191", "bad", new Regex("x"), CancellationToken.None));
+            .GetChannelsAsync("http://dispatcharr:9191", "bad", CancellationToken.None));
     }
 
     [Theory]
@@ -78,6 +117,21 @@ public class DispatcharrClientTests
     {
         Assert.Equal(expected, DispatcharrClient.FormatChannelNumber(number));
     }
+
+    [Theory]
+    [InlineData("AM | CA | NHL PPV", "AM | CA | NHL PPV")]
+    [InlineData("  EU |  UK | SPORTS ", "EU | UK | SPORTS")]
+    public void NormalizeGroupName_CollapsesWhitespace(string input, string expected)
+    {
+        Assert.Equal(expected, DispatcharrClient.NormalizeGroupName(input));
+    }
+
+    private static FakeHandler DefaultHandler() => new(new Dictionary<string, string>
+    {
+        ["GET /api/channels/channels/"] = ChannelsJson,
+        ["GET /api/channels/groups/"] = GroupsJson,
+        ["POST /api/channels/streams/by-ids/"] = StreamsJson,
+    });
 
     private static DispatcharrClient CreateClient(HttpMessageHandler handler)
     {
@@ -92,14 +146,24 @@ public class DispatcharrClientTests
 
         public string? LastApiKey { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public string? LastBody { get; private set; }
+
+        public long? LastContentLength { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var path = request.RequestUri!.AbsolutePath;
-            Requested.Add(path);
+            var key = request.Method.Method + " " + request.RequestUri!.AbsolutePath;
+            Requested.Add(key);
             LastApiKey = request.Headers.TryGetValues("X-API-Key", out var v) ? string.Join(",", v) : null;
-            return Task.FromResult(responses.TryGetValue(path, out var body)
+            if (request.Content is not null)
+            {
+                LastContentLength = request.Content.Headers.ContentLength;
+                LastBody = await request.Content.ReadAsStringAsync(cancellationToken);
+            }
+
+            return responses.TryGetValue(key, out var body)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") }
-                : new HttpResponseMessage(HttpStatusCode.NotFound));
+                : new HttpResponseMessage(HttpStatusCode.NotFound);
         }
     }
 }

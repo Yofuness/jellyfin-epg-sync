@@ -2,13 +2,13 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>EPG Channel Names</title></head>
 <body>
-<div id="EpgChannelNamesConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+<div id="EpgChannelNamesConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-textarea">
   <div data-role="content">
     <div class="content-primary">
       <form id="EpgChannelNamesConfigForm">
         <div class="inputContainer">
-          <input is="emby-input" type="text" id="ChannelNameRegex" label="Channels to rename (regex on original name)" />
-          <div class="fieldDescription">Example: <code>NHL GAME \d+</code> or <code>(NHL|NBA) GAME \d+</code></div>
+          <input is="emby-input" type="text" id="ChannelNameRegex" label="Only channels matching (optional regex)" />
+          <div class="fieldDescription">Empty = all channels. With Dispatcharr, event channels are detected automatically; use this only to limit them, e.g. <code>NHL GAME|TNT SPORTS</code>. Without Dispatcharr this is required and selects channels to rename from the EPG.</div>
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="NameTemplate" label="Name while a program is airing" />
@@ -27,15 +27,20 @@
           <div class="fieldDescription">Create one in Dispatcharr under your user's settings (API keys).</div>
         </div>
         <div class="inputContainer">
-          <input is="emby-input" type="text" id="StreamTitleRegex" label="Game title regex (on stream name)" />
-          <div class="fieldDescription">Uses the <code>title</code> group. Default takes the text after <code>:</code> up to <code>/</code>.</div>
+          <input is="emby-input" type="text" id="EventRegex" label="Event channel regex (on stream name)" />
+          <div class="fieldDescription">A stream matching this is an event channel. <code>prefix</code> = channel part, <code>title</code> = the event (empty = nothing on now). Default: <code>CA - NHL GAME 03 : SHARKS @ LEAFS …</code> → prefix <code>CA - NHL GAME 03</code>, title <code>SHARKS @ LEAFS …</code> (up to <code>/</code>).</div>
+        </div>
+        <div class="inputContainer">
+          <label class="textareaLabel" for="GroupCategoryRules">Programs page rows by Dispatcharr group</label>
+          <textarea is="emby-textarea" id="GroupCategoryRules" rows="6" style="width:100%;font-family:monospace"></textarea>
+          <div class="fieldDescription">One per line: <code>Dispatcharr group = Shows|Movies|Sports|News|Kids</code>, e.g. <code>AM | CA | DOCUMENTARY = Shows</code>. Programs on those channels appear in that row. Removing a rule undoes it. Unknown groups are logged with the list of real ones.</div>
         </div>
         <div class="checkboxContainer">
-          <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Also update guide programs</span></label>
+          <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Update event programs</span></label>
           <div class="fieldDescription">The program airing now gets the game title and the full stream name as description; later blocks become plain placeholders. Only for channels whose title comes from Dispatcharr.</div>
         </div>
         <div class="checkboxContainer">
-          <label><input is="emby-checkbox" type="checkbox" id="RemoveNoGamePrograms" /><span>Hide programs on game channels with no game</span></label>
+          <label><input is="emby-checkbox" type="checkbox" id="RemoveNoGamePrograms" /><span>Hide programs on event channels with nothing on</span></label>
           <div class="fieldDescription">Removes the airing placeholder (which only plays a logo) so it doesn't show on the Programs page. Later blocks stay, so a game added later still gets a program. The channel itself stays.</div>
         </div>
         <div class="inputContainer">
@@ -55,7 +60,7 @@
   <script type="text/javascript">
     (function () {
       var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
-      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'StreamTitleRegex', 'GameProgramTags', 'ProgramWindowHours', 'IntervalMinutes'];
+      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'EventRegex', 'GroupCategoryRules', 'GameProgramTags', 'ProgramWindowHours', 'IntervalMinutes'];
       var page = document.querySelector('#EpgChannelNamesConfigPage');
       page.addEventListener('pageshow', function () {
         Dashboard.showLoadingMsg();

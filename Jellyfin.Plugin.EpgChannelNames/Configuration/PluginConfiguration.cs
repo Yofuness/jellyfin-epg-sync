@@ -8,12 +8,13 @@ namespace Jellyfin.Plugin.EpgChannelNames.Configuration;
 public class PluginConfiguration : BasePluginConfiguration
 {
     /// <summary>
-    /// Gets or sets the regex that selects which channels to rename. Matched against the original name.
+    /// Gets or sets an optional regex on the original channel name. Empty means all channels.
+    /// Without Dispatcharr (EPG-only mode) it is required and selects the channels to rename from the EPG.
     /// </summary>
-    public string ChannelNameRegex { get; set; } = @"NHL GAME \d+";
+    public string ChannelNameRegex { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the name template. Tokens: {program}, {original}, {number}, {prefix} (regex match of <see cref="ChannelNameRegex"/>).
+    /// Gets or sets the name template. Tokens: {program}, {original}, {number}, {prefix} (event channels: the stream name before ":"; EPG mode: the regex match).
     /// </summary>
     public string NameTemplate { get; set; } = "{prefix} · {program}";
 
@@ -33,22 +34,27 @@ public class PluginConfiguration : BasePluginConfiguration
     public string DispatcharrApiKey { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the regex that extracts the game title from a Dispatcharr stream name. Uses the "title" group if present.
+    /// Gets or sets the regex that detects event channels from their stream name. Groups: "prefix" (channel part) and "title" (event; empty = no event now).
     /// </summary>
-    public string StreamTitleRegex { get; set; } = @":\s*(?<title>[^/]+?)\s*(?:/.*)?$";
+    public string EventRegex { get; set; } = @"^(?<prefix>.+?)\s*:\s*(?<title>[^/]*?)\s*(?:/.*)?$";
 
     /// <summary>
-    /// Gets or sets a value indicating whether guide programs are updated: the airing block gets the Dispatcharr game, later blocks become plain placeholders.
+    /// Gets or sets category rules, one per line: "Dispatcharr group = Shows|Movies|Sports|News|Kids".
+    /// </summary>
+    public string GroupCategoryRules { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether guide programs on event channels are updated: the airing block gets the event, later blocks become plain placeholders.
     /// </summary>
     public bool RenamePrograms { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets a value indicating whether the airing placeholder program is removed from Dispatcharr game channels with no game.
+    /// Gets or sets a value indicating whether the airing placeholder program is removed from event channels with no event.
     /// </summary>
     public bool RemoveNoGamePrograms { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets comma-separated tags added to renamed game programs. Jellyfin treats "Live" and "Sports" as program flags.
+    /// Gets or sets comma-separated tags added to the airing event program. Jellyfin treats "Live" and "Sports" as program flags.
     /// </summary>
     public string GameProgramTags { get; set; } = "Live,Sports";
 

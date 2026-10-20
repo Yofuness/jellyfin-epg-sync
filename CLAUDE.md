@@ -13,30 +13,32 @@ Test it locally with `act` (the upload step is skipped when `ACT` is set). `--bi
 `echo '{"action":"published","release":{"tag_name":"v1.0.0"}}' > /tmp/ev.json && act release -e /tmp/ev.json --bind -P ubuntu-latest=catthehacker/ubuntu:act-latest`
 
 ## Layout
-- `Dispatcharr/`: `IDispatcharrClient` + `DispatcharrClient`. Reads `GET /api/channels/channels/` (unpaginated array, `channel_number` is a float like `220.0`) and `GET /api/channels/channels/{id}/streams/` with the `X-API-Key` header. Results are keyed by channel number formatted like the M3U `tvg-chno` (`220`).
-- `ChannelRenamer.cs`: core logic. Queries `LiveTvChannel`, then the airing `LiveTvProgram`, applies the name template.
+- `Dispatcharr/`: `IDispatcharrClient.GetChannelsAsync` → `DispatcharrChannel(Number, Name, Group, StreamName)`. 3 requests with `X-API-Key`: `GET api/channels/channels/` (unpaginated array; `channel_number` float like `220.0`, `channel_group_id`, `streams` ids in priority order), `GET api/channels/groups/` (~1700 groups, unpaginated), `POST api/channels/streams/by-ids/ {"ids":[...]}` for the first stream of each channel. Sent with Content-Length (`StringContent`); the fake server needs it. Number formatted like M3U `tvg-chno` (`220`). Group names normalized (`NormalizeGroupName`): the provider's NHL group contains U+00A0.
+- `ChannelRenamer.cs`: core logic. Per Jellyfin channel: Dispatcharr event channel (`ParseEvent` on the stream name) → rename + `ApplyEventProgramsAsync`; other Dispatcharr channel → `ApplyCategoryAsync` only (never renamed); not in Dispatcharr + filter matches → EPG-only rename.
+- `CategoryRules.cs`: parses `group = Shows|Movies|Sports|News|Kids` and applies a category reversibly. Shows=`IsSeries`, Movies=`IsMovie`, others=tags. What the plugin set is recorded in `program.ProviderIds["EpgChannelNames.Category"]` (`series`, `movie`, `tag:X`), so removing or changing a rule undoes exactly that and never EPG-provided flags.
 - `RenameChannelsTask.cs`: scheduled task (startup + interval). Key `EpgChannelNamesRename`.
 - `GuideRefreshListener.cs`: reruns the task when Jellyfin's `RefreshGuide` task completes.
 - `ServiceRegistrator.cs`: DI registration.
 - `Configuration/`: settings class + embedded `configPage.html`. Plugin GUID `4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64` (keep in sync with `Plugin.cs`, the config page, and `build.sh`).
 
 ## Key behavior (non-obvious)
-- Title source order: Dispatcharr stream name (via `StreamTitleRegex`), then the EPG program airing now, then `NoProgramTemplate`. Real-world providers often have empty or stale EPG for game channels; only the stream name is fresh after each M3U refresh.
-- When Dispatcharr lists a channel, its stream name is authoritative: an empty game ("CA - NHL GAME 05 : ") means nothing airing, with NO EPG fallback. Dispatcharr's placeholder EPG for these channels just repeats the channel name. EPG is used only when Dispatcharr is off, down, or does not list the channel.
+- v2 model: event channels are detected from the stream name with `EventRegex` (`prefix : title / …`). Empty title = nothing on now, with no EPG fallback (Dispatcharr's EPG for these is a placeholder repeating the channel name). `{prefix}` is the full stream part before ":" (`CA - NHL GAME 01`), per the user's choice to keep country codes.
+- `ChannelNameRegex` is an optional filter (empty = all). It is required only in EPG-only mode (no Dispatcharr, or channel not listed). `Plugin` ctor clears the v1 defaults `NHL GAME \d+` / `^NHL GAME \d+` once (`IsOldDefaultRegex`).
+- Category rules apply to every program in the window on regular channels, and to the airing block only on event channels (events with no rule default to Sports). Unknown rule groups are warned about with the list of real groups.
 - Programs on Dispatcharr-listed channels (`ChannelRenamer.ApplyProgramsAsync`, window now to now+`ProgramWindowHours`): only the block **airing now** (`IsAiring`: start <= now < end) gets the game title, `GameProgramTags` and the full stream name as `Overview`. Every later block becomes a plain untagged placeholder (`NoProgramTemplate` name, empty overview, game tags stripped), so the Sports row lists only watchable games (later blocks only offer Record in the web UI). The next block gets the game within one run (15 min) of starting. Real-EPG programs are never touched.
 - No game (`RemoveNoGamePrograms`, default on): only the **airing** placeholder is deleted (`DeleteItem` with `DeleteFileLocation=false, DeleteFromExternalProvider=false, notifyParentItem=false`, as in Jellyfin's `GuideManager.CleanDatabase`). Later blocks are kept, so a game the provider adds later still has a block to rename. Guide refresh re-adds deleted ones; the post-refresh run deletes again.
 - `GameProgramTags` default `Live,Sports`. Jellyfin derives `IsLive`/`IsSports` from `Tags`. `Live` is +1 in the "On Now" ranking (`LiveTvManager.GetRecommendationScore`; a favorite channel is +3, per user only). `Sports` lists the program in the web Programs page's Sports row. The web client asks for 12 per row.
-- Consequence: if Dispatcharr goes down, the EPG fallback reads the renamed program, so the last known game sticks until the next guide refresh restores the EPG titles. The integration test asserts this.
-- Every run logs a summary ("Checked N channels: M matched ..."), and warns when nothing matches the regex.
-- Dispatcharr errors (HTTP, JSON, bad URL, timeout) are logged and fall back to the EPG. They never fail the task.
+- If Dispatcharr goes down, channels keep their last names; after the next guide refresh they show the raw tuner names until Dispatcharr is back (unless a filter enables EPG-only mode). The integration test asserts this.
+- Every run logs a summary ("Checked N channels: X from Dispatcharr, E event channels (L with an event now), M EPG-mode; R renamed; programs: U updated, D removed, C categorized").
+- Dispatcharr errors (HTTP, JSON, bad URL, timeout) are logged as warnings and never fail the task.
 - Jellyfin resets channel names to the M3U name on every guide refresh. The plugin stores `EpgChannelNames.Original` and `EpgChannelNames.Applied` in `channel.ProviderIds`. Any name different from `Applied` counts as a fresh original.
-- The regex matches against the original name, never the renamed one.
+- The filter regex matches against the original name, never the renamed one.
 - Target ABI 10.11. `Jellyfin.Controller`/`Jellyfin.Model` are pinned to 10.11.0, the oldest 10.11. Building against a newer patch (e.g. 10.11.11) fails to load on older servers ("Could not load MediaBrowser.Common, Version=10.11.11.0"). Never use a wildcard. Jellyfin 12.x needs a separate build.
 
 ## Testing
 - `./test.sh`: unit tests (xUnit + Moq) in `Jellyfin.Plugin.EpgChannelNames.Tests/`, about 30 s. Run after every change.
-- `./test.sh --integration`: also boots `jellyfin/jellyfin:10.11.0` in Docker with a fake M3U + XMLTV, checks the rename, swaps the game, then adds a fake Dispatcharr (static JSON via python http.server) and checks stream titles win and the Dispatcharr-down fallback. `expect` retries for 30 s because the rename task is queued after guide refreshes. About 2 min.
-- Tests inject config through the internal `ChannelRenamer(libraryManager, logger, getConfig)` constructor and set the static `BaseItem.LibraryManager` to a mock, so the test class runs in one serial collection.
+- `./test.sh --integration`: also boots `jellyfin/jellyfin:10.11.0` in Docker with a fake M3U + XMLTV, checks the rename, swaps the game, then switches to a fake Dispatcharr (`scripts/fake_dispatcharr.py`: GET channels/groups, POST by-ids, real 0.32 shapes) with NHL, TNT, History and CBC channels, and checks names, the Sports and Shows rows (exact web-client row queries), rule removal, and Dispatcharr-down behavior. Phase 1 uses filter `NHL GAME \d\d` because `\d+` would be migrated away. `expect` retries for 30 s because the rename task is queued after guide refreshes. About 2 min.
+- Tests inject config through the internal `ChannelRenamer(libraryManager, logger, dispatcharr, getConfig)` constructor and set the static `BaseItem.LibraryManager` to a mock, so the test class runs in one serial collection.
 - Name templating lives in the pure `ChannelRenamer.BuildName`. Test new tokens there.
 - Jellyfin caches XMLTV in `/cache/xmltv`. The integration test clears it before the second refresh.
 

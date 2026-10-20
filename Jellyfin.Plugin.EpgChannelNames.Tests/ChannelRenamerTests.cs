@@ -33,6 +33,7 @@ public class ChannelRenamerTests
     private readonly PluginConfiguration _config = new();
     private readonly Mock<IDispatcharrClient> _dispatcharr = new();
     private readonly Dictionary<string, string> _streamNames = new();
+    private readonly Dictionary<string, string> _groups = new();
 
     public ChannelRenamerTests()
     {
@@ -48,8 +49,13 @@ public class ChannelRenamerTests
                 .Cast<BaseItem>()
                 .ToList());
         _dispatcharr
-            .Setup(d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => _streamNames);
+            .Setup(d => d.GetChannelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => _streamNames
+                .Select(kv => new DispatcharrChannel(kv.Key, "Dispatcharr " + kv.Key, _groups.GetValueOrDefault(kv.Key), kv.Value))
+                .ToList());
+
+        // EPG-mode tests below rely on the v1 NHL filter; Dispatcharr tests are unaffected by it for NHL names.
+        _config.ChannelNameRegex = @"NHL GAME \d+";
         // Deleting a program makes it disappear from later queries, like the real library.
         _library
             .Setup(l => l.DeleteItem(It.IsAny<BaseItem>(), It.IsAny<DeleteOptions>(), It.IsAny<bool>()))
@@ -160,7 +166,7 @@ public class ChannelRenamerTests
 
         await RunAsync();
 
-        Assert.Equal("NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET", channel.Name);
+        Assert.Equal("CA - NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET", channel.Name);
     }
 
     [Fact]
@@ -173,7 +179,7 @@ public class ChannelRenamerTests
 
         await RunAsync();
 
-        Assert.Equal("NHL GAME 07", channel.Name);
+        Assert.Equal("CA - NHL GAME 07", channel.Name);
     }
 
     [Fact]
@@ -278,7 +284,7 @@ public class ChannelRenamerTests
             l => l.DeleteItem(placeholder, It.Is<DeleteOptions>(o => !o.DeleteFileLocation && !o.DeleteFromExternalProvider), false),
             Times.Once());
         Assert.Null(GetProgram(channel.Id));
-        Assert.Equal("NHL GAME 07", channel.Name); // channel itself stays
+        Assert.Equal("CA - NHL GAME 07", channel.Name); // channel itself stays
     }
 
     [Fact]
@@ -328,7 +334,7 @@ public class ChannelRenamerTests
 
         await RunAsync();
 
-        Assert.Equal("NHL GAME 07", _programItems[channel.Id].Name);
+        Assert.Equal("CA - NHL GAME 07", _programItems[channel.Id].Name);
     }
 
     [Fact]
@@ -395,7 +401,7 @@ public class ChannelRenamerTests
 
         Assert.Equal("SHARKS @ LEAFS", _programItems[channel.Id].Name);
         Assert.True(_programItems[channel.Id].IsSports);
-        Assert.Equal("NHL GAME 03", later.Name);
+        Assert.Equal("CA - NHL GAME 03", later.Name);
         Assert.False(later.IsSports);
         Assert.False(later.IsLive);
         Assert.Equal(string.Empty, later.Overview);
@@ -427,7 +433,7 @@ public class ChannelRenamerTests
 
         Assert.Null(GetProgram(channel.Id));
         Assert.Same(later, _laterItems[channel.Id]);
-        Assert.Equal("NHL GAME 07", later.Name);
+        Assert.Equal("CA - NHL GAME 07", later.Name);
     }
 
     [Fact]
@@ -462,6 +468,116 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task TntEventChannel_IsRenamedAndTagged()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        var channel = AddChannel("UK - TNT SPORTS | EVENT 2 HD :", "placeholder", number: "120");
+        _streamNames["120"] = "UK - TNT SPORTS | EVENT 2 HD : Major League Baseball";
+
+        await RunAsync();
+
+        Assert.Equal("UK - TNT SPORTS | EVENT 2 HD · Major League Baseball", channel.Name);
+        Assert.True(_programItems[channel.Id].IsSports);
+        Assert.True(_programItems[channel.Id].IsLive);
+    }
+
+    [Fact]
+    public async Task RegularChannel_IsNeverRenamed_ButGetsItsGroupRow()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        _config.GroupCategoryRules = "AM | CA | DOCUMENTARY = Shows";
+        var channel = AddChannel("CA - HISTORY HD ◉", "Pawn Stars", number: "30");
+        _streamNames["30"] = "CA - HISTORY HD ◉";
+        _groups["30"] = "AM | CA | DOCUMENTARY";
+
+        await RunAsync();
+
+        Assert.Equal("CA - HISTORY HD ◉", channel.Name);
+        var program = _programItems[channel.Id];
+        Assert.Equal("Pawn Stars", program.Name);
+        Assert.True(program.IsSeries);
+        Assert.False(program.IsLive);
+    }
+
+    [Fact]
+    public async Task RuleRemoved_RegularChannelProgramIsRestored()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        _config.GroupCategoryRules = "AM | CA | DOCUMENTARY = Shows";
+        var channel = AddChannel("CA - HISTORY HD", "Pawn Stars", number: "30");
+        _streamNames["30"] = "CA - HISTORY HD";
+        _groups["30"] = "AM | CA | DOCUMENTARY";
+        await RunAsync();
+
+        _config.GroupCategoryRules = string.Empty;
+        await RunAsync();
+
+        Assert.False(_programItems[channel.Id].IsSeries);
+    }
+
+    [Fact]
+    public async Task EventChannel_AiringGetsItsGroupCategory()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.GameProgramTags = "Live";
+        _config.GroupCategoryRules = "EU | UK | SPORTS = News"; // unusual on purpose, to prove the rule is used
+        var channel = AddChannel("UK - GAATV 004", "placeholder", number: "192");
+        _streamNames["192"] = "UK - GAATV 004 : DOWN @ CLONDUFF";
+        _groups["192"] = "EU | UK | SPORTS";
+        _config.ChannelNameRegex = string.Empty;
+
+        await RunAsync();
+
+        Assert.True(_programItems[channel.Id].IsNews);
+        Assert.False(_programItems[channel.Id].IsSports);
+    }
+
+    [Fact]
+    public async Task EventChannel_NoRule_DefaultsToSports()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.GameProgramTags = "Live";
+        _config.ChannelNameRegex = string.Empty;
+        var channel = AddChannel("UK - GAATV 004", "placeholder", number: "192");
+        _streamNames["192"] = "UK - GAATV 004 : DOWN @ CLONDUFF";
+
+        await RunAsync();
+
+        Assert.True(_programItems[channel.Id].IsSports);
+    }
+
+    [Fact]
+    public async Task Filter_LimitsEventChannels()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = "NHL GAME";
+        var tnt = AddChannel("UK - TNT SPORTS | EVENT 2 HD :", "x", number: "120");
+        _streamNames["120"] = "UK - TNT SPORTS | EVENT 2 HD : Baseball";
+
+        await RunAsync();
+
+        Assert.Equal("UK - TNT SPORTS | EVENT 2 HD :", tnt.Name);
+    }
+
+    [Fact]
+    public async Task UnknownRuleGroup_LogsKnownGroups()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.GroupCategoryRules = "AM | CA | DOCUMENTARIES = Shows";
+        _streamNames["30"] = "CA - HISTORY HD";
+        _groups["30"] = "AM | CA | DOCUMENTARY";
+        var logger = new ListLogger();
+
+        await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, () => _config)
+            .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
+
+        Assert.Contains(logger.Warnings, m => m.Contains("'AM | CA | DOCUMENTARIES' matches no Dispatcharr channel", StringComparison.Ordinal) && m.Contains("AM | CA | DOCUMENTARY", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Summary_IsLoggedEveryRun()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
@@ -476,22 +592,22 @@ public class ChannelRenamerTests
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(
-            "Checked 3 channels: 2 matched 'NHL GAME \\d+', 2 renamed; titles from Dispatcharr 1, from EPG 0, nothing airing 1; 1 programs renamed, 1 programs removed",
+            "Checked 3 channels: 2 from Dispatcharr, 2 event channels (1 with an event now), 0 EPG-mode; 2 renamed; programs: 1 updated, 1 removed, 0 categorized",
             logger.Messages);
         Assert.DoesNotContain(logger.Messages, m => m.StartsWith("No Live TV channels matched", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task NoMatches_LogsWarning()
+    public async Task NoDispatcharrAndNoFilter_LogsNothingToDo()
     {
-        _config.ChannelNameRegex = @"^NHL GAME \d+";
+        _config.ChannelNameRegex = string.Empty;
         AddChannel("CA - NHL GAME 01", "x");
         var logger = new ListLogger();
 
         await new ChannelRenamer(_library.Object, logger, _dispatcharr.Object, () => _config)
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
-        Assert.Contains(logger.Warnings, m => m.StartsWith("No Live TV channels matched '^NHL GAME \\d+'", StringComparison.Ordinal));
+        Assert.Contains(logger.Warnings, m => m.StartsWith("Nothing to do", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -503,7 +619,7 @@ public class ChannelRenamerTests
 
         await RunAsync();
 
-        Assert.Equal("NHL GAME 05", channel.Name);
+        Assert.Equal("CA - NHL GAME 05", channel.Name);
     }
 
     [Fact]
@@ -511,7 +627,7 @@ public class ChannelRenamerTests
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
         _dispatcharr
-            .Setup(d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()))
+            .Setup(d => d.GetChannelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("connection refused"));
         var channel = AddChannel("CA - NHL GAME 01", "EPG Game", number: "16");
 
@@ -528,7 +644,7 @@ public class ChannelRenamerTests
         await RunAsync();
 
         _dispatcharr.Verify(
-            d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()),
+            d => d.GetChannelsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never());
     }
 

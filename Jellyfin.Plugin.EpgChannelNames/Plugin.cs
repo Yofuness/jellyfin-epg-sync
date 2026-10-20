@@ -22,6 +22,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+
+        // v2: the regex became an optional filter (event channels are auto-detected). The old NHL-only
+        // defaults would silently keep v2 limited to NHL, so clear them once.
+        if (IsOldDefaultRegex(Configuration.ChannelNameRegex))
+        {
+            Configuration.ChannelNameRegex = string.Empty;
+            SaveConfiguration();
+        }
     }
 
     /// <summary>
@@ -37,6 +45,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     /// <inheritdoc />
     public override string Description => "Renames Live TV channels to the program currently airing in the EPG.";
+
+    /// <summary>
+    /// Returns whether <paramref name="regex"/> is one of the NHL-only defaults from v1.
+    /// </summary>
+    /// <param name="regex">Saved channel regex.</param>
+    /// <returns>True for "NHL GAME \d+" and "^NHL GAME \d+".</returns>
+    internal static bool IsOldDefaultRegex(string? regex)
+        => regex is @"NHL GAME \d+" or @"^NHL GAME \d+";
 
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()

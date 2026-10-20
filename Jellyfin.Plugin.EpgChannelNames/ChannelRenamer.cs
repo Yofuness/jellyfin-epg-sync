@@ -17,7 +17,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.EpgChannelNames;
 
 /// <summary>
-/// Renames matching Live TV channels to the program currently airing.
+/// Renames event channels from Dispatcharr stream names and sorts programs into Programs-page rows.
 /// </summary>
 public class ChannelRenamer
 {
@@ -78,30 +78,31 @@ public class ChannelRenamer
     }
 
     /// <summary>
-    /// Extracts the game title from a Dispatcharr stream name.
+    /// Parses an event channel's stream name.
     /// </summary>
-    /// <param name="streamName">Stream name, e.g. "CA - NHL GAME 01 : DUCKS @ RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK".</param>
-    /// <param name="titleRegex">Regex; the "title" group is used if present, else the whole match.</param>
-    /// <returns>The title, or null when the stream has no game (e.g. "CA - NHL GAME 05 : ").</returns>
-    internal static string? ExtractStreamTitle(string? streamName, Regex titleRegex)
+    /// <param name="streamName">e.g. "CA - NHL GAME 01 : DUCKS @ RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK" or "UK - TNT SPORTS | EVENT 9 HD :".</param>
+    /// <param name="eventRegex">Regex with "prefix" and "title" groups.</param>
+    /// <returns>Null when the stream is not an event channel; otherwise the prefix and the title (null = no event now).</returns>
+    internal static (string Prefix, string? Title)? ParseEvent(string? streamName, Regex eventRegex)
     {
         if (string.IsNullOrWhiteSpace(streamName))
         {
             return null;
         }
 
-        var match = titleRegex.Match(streamName);
-        if (!match.Success)
+        var match = eventRegex.Match(streamName);
+        if (!match.Success || !match.Groups["prefix"].Success)
         {
             return null;
         }
 
-        var title = (match.Groups["title"].Success ? match.Groups["title"].Value : match.Value).Trim();
-        return title.Length == 0 ? null : title;
+        var prefix = match.Groups["prefix"].Value.Trim();
+        var title = match.Groups["title"].Success ? match.Groups["title"].Value.Trim() : string.Empty;
+        return prefix.Length == 0 ? null : (prefix, title.Length == 0 ? null : title);
     }
 
     /// <summary>
-    /// Renames every matching channel once.
+    /// Renames event channels and updates programs once.
     /// </summary>
     /// <param name="progress">Progress reporter, 0 to 100.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -109,17 +110,38 @@ public class ChannelRenamer
     public async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var config = _getConfig();
-        var filter = new Regex(config.ChannelNameRegex, RegexOptions.IgnoreCase);
+        var filter = string.IsNullOrWhiteSpace(config.ChannelNameRegex) ? null : new Regex(config.ChannelNameRegex, RegexOptions.IgnoreCase);
+        var eventRegex = new Regex(config.EventRegex, RegexOptions.IgnoreCase);
+        var rules = CategoryRules.Parse(config.GroupCategoryRules);
         var now = DateTime.UtcNow;
-        var streamNames = await GetStreamNamesAsync(config, filter, cancellationToken).ConfigureAwait(false);
-        var titleRegex = new Regex(config.StreamTitleRegex, RegexOptions.IgnoreCase);
+
+        foreach (var line in rules.InvalidLines)
+        {
+            _logger.LogWarning("Ignoring category rule '{Line}'. Use 'Dispatcharr group = Shows|Movies|Sports|News|Kids'", line);
+        }
+
+        var dispatcharr = await GetDispatcharrChannelsAsync(config, cancellationToken).ConfigureAwait(false);
+        var byNumber = new Dictionary<string, DispatcharrChannel>();
+        foreach (var d in dispatcharr ?? Array.Empty<DispatcharrChannel>())
+        {
+            byNumber.TryAdd(d.Number, d);
+        }
+
+        if (dispatcharr is not null)
+        {
+            var known = dispatcharr.Select(d => d.Group).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in rules.Groups.Where(g => !known.Contains(g)))
+            {
+                _logger.LogWarning("Category rule group '{Group}' matches no Dispatcharr channel. Groups in use: {Groups}", group, string.Join(", ", known.Order()));
+            }
+        }
 
         var channels = _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.LiveTvChannel }
         }).OfType<LiveTvChannel>().ToList();
 
-        int matched = 0, renamed = 0, fromDispatcharr = 0, fromEpg = 0, nothingAiring = 0, programsRenamed = 0, programsRemoved = 0;
+        var stats = new RunStats();
         for (var i = 0; i < channels.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -133,31 +155,42 @@ public class ChannelRenamer
             }
 
             var original = channel.ProviderIds.GetValueOrDefault(OriginalKey) ?? channel.Name;
-            var match = filter.Match(original);
-            if (!match.Success)
+            var filterMatch = filter?.Match(original);
+            if (filterMatch is { Success: false })
             {
                 continue;
             }
 
-            matched++;
-            string? title;
-            var dispatcharrListed = false;
-            string? streamName = null;
-            if (channel.Number is not null && streamNames.TryGetValue(channel.Number, out streamName))
+            string? newName = null;
+            if (channel.Number is not null && byNumber.TryGetValue(channel.Number, out var d))
             {
-                // Dispatcharr knows this channel: its stream name is authoritative. An empty game ("CA - NHL GAME 05 : ")
-                // means nothing tonight. Don't fall back to the EPG, which for these channels is Dispatcharr's own
-                // placeholder repeating the channel name.
-                dispatcharrListed = true;
-                title = ExtractStreamTitle(streamName, titleRegex);
-                if (title is not null)
+                stats.Listed++;
+                var category = rules.For(d.Group);
+                if (ParseEvent(d.StreamName, eventRegex) is { } ev)
                 {
-                    fromDispatcharr++;
+                    // Event channel: the stream name is authoritative. No title = nothing on now; the EPG for these
+                    // channels is Dispatcharr's placeholder repeating the channel name, so it's never used.
+                    stats.Events++;
+                    if (ev.Title is not null)
+                    {
+                        stats.LiveEvents++;
+                    }
+
+                    newName = BuildName(ev.Title is null ? config.NoProgramTemplate : config.NameTemplate, ev.Title, original, channel.Number, ev.Prefix);
+                    var plainName = BuildName(config.NoProgramTemplate, null, original, channel.Number, ev.Prefix);
+                    await ApplyEventProgramsAsync(channel, config, ev.Title, d.StreamName!, plainName, category ?? ProgramCategory.Sports, now, stats, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    // Regular channel: keep its name and real EPG; only sort its programs into a Programs-page row.
+                    await ApplyCategoryAsync(channel, category, config.ProgramWindowHours, now, stats, cancellationToken).ConfigureAwait(false);
                 }
             }
-            else
+            else if (filterMatch is { Success: true })
             {
-                title = _libraryManager.GetItemList(new InternalItemsQuery
+                // EPG-only mode (Dispatcharr off, down, or not listing this channel): rename from the airing program.
+                stats.EpgMatched++;
+                var title = _libraryManager.GetItemList(new InternalItemsQuery
                 {
                     IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
                     ChannelIds = new[] { channel.Id },
@@ -165,37 +198,15 @@ public class ChannelRenamer
                     MinEndDate = now,
                     Limit = 1
                 }) is { Count: > 0 } programs ? programs[0].Name : null;
-                if (title is not null)
-                {
-                    fromEpg++;
-                }
+                newName = BuildName(title is null ? config.NoProgramTemplate : config.NameTemplate, title, original, channel.Number, filterMatch.Value);
             }
 
-            if (title is null)
-            {
-                nothingAiring++;
-            }
-
-            var template = title is null ? config.NoProgramTemplate : config.NameTemplate;
-            var newName = BuildName(template, title, original, channel.Number, match.Value);
-
-            if (dispatcharrListed)
-            {
-                // Program titles are what the Programs page and guide show; for these channels they are
-                // Dispatcharr's 4-hour placeholders. Only the block airing now carries tonight's game.
-                var plainName = BuildName(config.NoProgramTemplate, null, original, channel.Number, match.Value);
-                var (programsChanged, programsDeleted) = await ApplyProgramsAsync(
-                    channel, config, title, streamName!, plainName, now, cancellationToken).ConfigureAwait(false);
-                programsRenamed += programsChanged;
-                programsRemoved += programsDeleted;
-            }
-
-            if (newName == channel.Name && applied == newName)
+            if (newName is null || (newName == channel.Name && applied == newName))
             {
                 continue;
             }
 
-            renamed++;
+            stats.Renamed++;
             _logger.LogInformation("Renaming channel '{Old}' -> '{New}'", channel.Name, newName);
             channel.Name = newName;
             channel.ProviderIds[AppliedKey] = newName;
@@ -205,24 +216,24 @@ public class ChannelRenamer
         progress.Report(100);
 
         _logger.LogInformation(
-            "Checked {Total} channels: {Matched} matched '{Regex}', {Renamed} renamed; titles from Dispatcharr {FromDispatcharr}, from EPG {FromEpg}, nothing airing {NothingAiring}; {ProgramsRenamed} programs renamed, {ProgramsRemoved} programs removed",
+            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized",
             channels.Count,
-            matched,
-            config.ChannelNameRegex,
-            renamed,
-            fromDispatcharr,
-            fromEpg,
-            nothingAiring,
-            programsRenamed,
-            programsRemoved);
-        if (matched == 0 && channels.Count > 0)
+            stats.Listed,
+            stats.Events,
+            stats.LiveEvents,
+            stats.EpgMatched,
+            stats.Renamed,
+            stats.ProgramsUpdated,
+            stats.ProgramsRemoved,
+            stats.ProgramsCategorized);
+        if (dispatcharr is not null && dispatcharr.Count == 0)
         {
-            _logger.LogWarning("No Live TV channels matched '{Regex}'. Check 'Channels to rename' in the plugin settings", config.ChannelNameRegex);
+            _logger.LogWarning("Dispatcharr returned no channels");
         }
 
-        if (!string.IsNullOrWhiteSpace(config.DispatcharrUrl) && matched > 0 && streamNames.Count == 0)
+        if (dispatcharr is null && filter is null)
         {
-            _logger.LogWarning("Dispatcharr returned no streams for channels matching '{Regex}'", config.ChannelNameRegex);
+            _logger.LogWarning("Nothing to do: set a Dispatcharr URL, or 'Only channels matching' for EPG-only mode");
         }
     }
 
@@ -243,13 +254,15 @@ public class ChannelRenamer
     internal static bool IsAiring(LiveTvProgram program, DateTime now)
         => program.StartDate <= now && (program.EndDate ?? DateTime.MaxValue) > now;
 
-    private async Task<(int Changed, int Deleted)> ApplyProgramsAsync(
+    private async Task ApplyEventProgramsAsync(
         LiveTvChannel channel,
         PluginConfiguration config,
         string? title,
         string streamName,
         string plainName,
+        ProgramCategory category,
         DateTime now,
+        RunStats stats,
         CancellationToken cancellationToken)
     {
         var gameTags = ParseTags(config.GameProgramTags);
@@ -261,7 +274,6 @@ public class ChannelRenamer
             MaxStartDate = now.AddHours(Math.Max(0, config.ProgramWindowHours))
         }).OfType<LiveTvProgram>();
 
-        int changed = 0, deleted = 0;
         foreach (var program in programs)
         {
             var airing = IsAiring(program, now);
@@ -277,7 +289,7 @@ public class ChannelRenamer
                         DeleteFromExternalProvider = false
                     },
                     false);
-                deleted++;
+                stats.ProgramsRemoved++;
                 continue;
             }
 
@@ -295,38 +307,81 @@ public class ChannelRenamer
                 ? program.Tags.Union(gameTags, StringComparer.OrdinalIgnoreCase).ToArray()
                 : program.Tags.Where(t => !gameTags.Contains(t, StringComparer.OrdinalIgnoreCase)).ToArray();
 
-            if (program.Name == name && (program.Overview ?? string.Empty) == overview && program.Tags.SequenceEqual(tags))
+            var unchanged = program.Name == name && (program.Overview ?? string.Empty) == overview && program.Tags.SequenceEqual(tags);
+            program.Name = name;
+            program.Overview = overview;
+            program.Tags = tags;
+
+            // The airing event also gets its group's category; placeholders get none.
+            var categoryChanged = CategoryRules.Apply(program, isGame ? category : null);
+            if (unchanged && !categoryChanged)
             {
                 continue;
             }
 
-            program.Name = name;
-            program.Overview = overview;
-            program.Tags = tags;
             await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-            changed++;
+            stats.ProgramsUpdated++;
         }
-
-        return (changed, deleted);
     }
 
-    private async Task<IReadOnlyDictionary<string, string>> GetStreamNamesAsync(PluginConfiguration config, Regex filter, CancellationToken cancellationToken)
+    private async Task ApplyCategoryAsync(LiveTvChannel channel, ProgramCategory? category, int windowHours, DateTime now, RunStats stats, CancellationToken cancellationToken)
+    {
+        var programs = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
+            ChannelIds = new[] { channel.Id },
+            MinEndDate = now,
+            MaxStartDate = now.AddHours(Math.Max(0, windowHours))
+        }).OfType<LiveTvProgram>();
+
+        foreach (var program in programs)
+        {
+            if (!CategoryRules.Apply(program, category))
+            {
+                continue;
+            }
+
+            await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+            stats.ProgramsCategorized++;
+        }
+    }
+
+    private async Task<IReadOnlyList<DispatcharrChannel>?> GetDispatcharrChannelsAsync(PluginConfiguration config, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(config.DispatcharrUrl))
         {
-            return new Dictionary<string, string>();
+            return null;
         }
 
         try
         {
-            return await _dispatcharr.GetStreamNamesByChannelNumberAsync(config.DispatcharrUrl, config.DispatcharrApiKey, filter, cancellationToken).ConfigureAwait(false);
+            return await _dispatcharr.GetChannelsAsync(config.DispatcharrUrl, config.DispatcharrApiKey, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or UriFormatException
             || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            // Dispatcharr being down should not stop EPG-based renaming.
-            _logger.LogWarning(ex, "Could not read stream names from Dispatcharr at {Url}; falling back to EPG", config.DispatcharrUrl);
-            return new Dictionary<string, string>();
+            // Dispatcharr being down should not fail the task; channels keep their last names until it's back.
+            _logger.LogWarning(ex, "Could not read channels from Dispatcharr at {Url}", config.DispatcharrUrl);
+            return null;
         }
+    }
+
+    private sealed class RunStats
+    {
+        public int Listed { get; set; }
+
+        public int Events { get; set; }
+
+        public int LiveEvents { get; set; }
+
+        public int EpgMatched { get; set; }
+
+        public int Renamed { get; set; }
+
+        public int ProgramsUpdated { get; set; }
+
+        public int ProgramsRemoved { get; set; }
+
+        public int ProgramsCategorized { get; set; }
     }
 }
