@@ -1,11 +1,26 @@
 # EPG Channel Names (Jellyfin 10.11 plugin)
 
-Renames Live TV channels to whatever the EPG says is airing now.
-`NHL GAME 01 Old Team vs Stale Team` → `NHL GAME 01 · Oilers vs Flames`.
+Keeps Jellyfin Live TV in sync with Dispatcharr: event channels show what's on (`CA - NHL GAME 01 · DUCKS @ RANGERS`), and sports programs show the teams playing (`Live NHL: Flyers vs Avalanche`).
 
-Jellyfin resets channel names to the M3U name on every "Refresh Guide". This plugin re-applies the EPG name right after each guide refresh, plus every 15 minutes.
+## Quick start (5 minutes)
+1. Jellyfin: Dashboard → Plugins → Repositories → **+**, URL `https://raw.githubusercontent.com/Yofuness/jellyfin-epg-sync/main/manifest.json`, Save.
+2. Catalog → install **EPG Channel Names** → restart Jellyfin.
+3. Dispatcharr: create an API key for your user.
+4. Jellyfin: Dashboard → Plugins → **EPG Channel Names** → fill in **Dispatcharr URL** (e.g. `http://192.168.1.10:9191`) and **API key** → Save.
 
-## Install (plugin repository, recommended)
+That's all. It runs after every guide refresh and every 15 minutes. To see it right away: Dashboard → Scheduled Tasks → Live TV → **Rename channels from EPG** → run.
+
+**Without step 4 the plugin does nothing** (it logs "Nothing to do"). With the URL and key set, the defaults do this:
+- **Event channels** (stream name like `CA - NHL GAME 01 : DUCKS @ RANGERS …`) are renamed to the event, or back to the plain name when nothing is on. The airing program gets the event title and the Live + Sports tags, so it appears in On Now and the Programs page's Sports row.
+- **Empty event channels**: the current placeholder program is hidden, so only real games show as live.
+- **Finished events** left in stream names (start time more than 6 hours ago) count as nothing on.
+- **Team names**: generic sports titles like "Live NHL Ice Hockey" get the teams from the description. Team list from ESPN, refreshed monthly.
+- **Program images**: programs without an image use the channel logo.
+- Placeholder programs (titled like their channel, or "Channel No Longer Available") are left alone.
+
+Not on by default: sorting regular channels into Programs-page rows (Shows, Movies, News, Kids, Sports). See [Programs page rows by group](#configure).
+
+## Install (plugin repository) in detail
 1. Dashboard → Plugins → Repositories (or Catalog → gear icon) → **+**
 2. Name: `EPG Channel Names`
    URL: `https://raw.githubusercontent.com/Yofuness/jellyfin-epg-sync/main/manifest.json`
@@ -38,8 +53,9 @@ The plugin reads every Dispatcharr channel (3 requests) and matches Jellyfin cha
 - The program airing now gets the event title, the full stream name as description, `Live` + `Sports` tags (or the group's category), so it tops "On Now" and shows in its row.
 - Later guide blocks stay plain until they start airing. With nothing on, the airing placeholder is hidden; the channel stays.
 - Programs without an image show their channel's logo, so Programs-page cards are recognizable.
-- Sports programs with a generic title get the teams from their description: "Live NHL Ice Hockey" + "Philadelphia Flyers v Colorado Avalanche" becomes **Live NHL: Flyers vs Avalanche**. Covers NHL, NFL, NBA, MLB, MLS, Premier League, Championship, LaLiga, Champions League, Premiership Rugby, URC, Champions Cup and GAA counties. Teams come from ESPN's public API (no key) and are refreshed monthly by the *Refresh sports team list* scheduled task. Only programs with exactly two teams of one league are renamed. Turn it off with *Put team names in sports program titles*; the EPG titles come back.
 - Finished events that the provider leaves in stream names are ignored: if the title has a start time (`OCT 17 – 5:30 PM UK`) more than 6 hours ago (setting), the channel counts as nothing on.
+
+**Regular channels** keep their names and guide. Sports programs with a generic title get the teams from their description: "Live NHL Ice Hockey" + "Philadelphia Flyers v Colorado Avalanche" becomes **Live NHL: Flyers vs Avalanche**. Covers NHL, NFL, NBA, MLB, MLS, Premier League, Championship, LaLiga, Champions League, Premiership Rugby, URC, Champions Cup and GAA counties. Teams come from ESPN's public API (no key) and are refreshed monthly by the *Refresh sports team list* scheduled task. Only programs with exactly two teams of one league are renamed. Turn it off with *Put team names in sports program titles*; the EPG titles come back.
 
 **Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. Map Dispatcharr groups to rows, one per line:
 ```
