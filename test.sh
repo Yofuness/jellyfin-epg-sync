@@ -49,6 +49,8 @@ cat > "$WORK/tv/ch.m3u" <<'M3U'
 http://127.0.0.1/none.ts
 #EXTINF:-1 tvg-id="nhl07" tvg-chno="107",NHL GAME 07
 http://127.0.0.1/none7.ts
+#EXTINF:-1 tvg-id="nhl02" tvg-chno="102",NHL GAME 02
+http://127.0.0.1/none102.ts
 #EXTINF:-1 tvg-id="tnt2" tvg-chno="120",UK - TNT SPORTS | EVENT 2 HD :
 http://127.0.0.1/none120.ts
 #EXTINF:-1 tvg-id="history" tvg-chno="30" tvg-logo="http://dispatcharr:8000/logos/history.png",CA - HISTORY HD
@@ -69,6 +71,7 @@ write_epg() {
 <?xml version="1.0"?><tv>
 <channel id="nhl01"><display-name>NHL GAME 01</display-name></channel>
 <channel id="nhl07"><display-name>NHL GAME 07</display-name></channel>
+<channel id="nhl02"><display-name>NHL GAME 02</display-name></channel>
 <channel id="tnt2"><display-name>UK - TNT SPORTS | EVENT 2 HD :</display-name></channel>
 <channel id="history"><display-name>CA - HISTORY HD</display-name></channel>
 <channel id="stingray"><display-name>CA - STINGRAY NATURE HD</display-name></channel>
@@ -78,6 +81,8 @@ write_epg() {
 <programme start="$a +0000" stop="$b +0000" channel="nhl01"><title>$1</title></programme>
 <programme start="$b +0000" stop="$c +0000" channel="nhl01"><title>Later placeholder</title><desc>Early Bird Special - Coffee not included</desc></programme>
 <programme start="$a +0000" stop="$b +0000" channel="nhl07"><title>NHL GAME 07</title></programme>
+<programme start="$a +0000" stop="$b +0000" channel="nhl02"><title>NHL GAME 02</title></programme>
+<programme start="$b +0000" stop="$c +0000" channel="nhl02"><title>NHL GAME 02</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="tnt2"><title>UK - TNT SPORTS | EVENT 2 HD :</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="history"><title>Pawn Stars</title></programme>
 <programme start="$b +0000" stop="$c +0000" channel="history"><title>Pawn Stars</title></programme>
@@ -105,6 +110,7 @@ PY
 cat > "$WORK/fake/channels.json" <<'JSON'
 [{"id": 42, "name": "CA - NHL GAME 01", "channel_number": 101.0, "channel_group_id": 1072, "streams": [7]},
  {"id": 44, "name": "CA - NHL GAME 07", "channel_number": 107.0, "channel_group_id": 1072, "streams": [9]},
+ {"id": 50, "name": "CA - NHL GAME 02", "channel_number": 102.0, "channel_group_id": 1072, "streams": [15]},
  {"id": 45, "name": "UK - TNT SPORTS | EVENT 2 HD :", "channel_number": 120.0, "channel_group_id": 7, "streams": [10]},
  {"id": 46, "name": "CA - HISTORY HD", "channel_number": 30.0, "channel_group_id": 5, "streams": [11]},
  {"id": 47, "name": "CA - STINGRAY NATURE HD", "channel_number": 31.0, "channel_group_id": 5, "streams": [12]},
@@ -116,6 +122,7 @@ printf '%s' '[{"id": 1072, "name": "AM | CA\u00a0|\u00a0NHL PPV"}, {"id": 5, "na
 cat > "$WORK/fake/streams.json" <<'JSON'
 [{"id": 7, "name": "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT / UK FEED"},
  {"id": 9, "name": "CA - NHL GAME 07 : "},
+ {"id": 15, "name": "CA - NHL GAME 02 : BOSTON BRUINS @ DALLAS STARS LATER_DATE / LATER_UK"},
  {"id": 10, "name": "UK - TNT SPORTS | EVENT 2 HD : Major League Baseball"},
  {"id": 11, "name": "CA - HISTORY HD"},
  {"id": 12, "name": "CA - STINGRAY NATURE HD"},
@@ -132,6 +139,8 @@ cat > "$WORK/fake/espn/hockey/nhl/teams" <<'JSON'
  {"team":{"displayName":"Anaheim Ducks","shortDisplayName":"Ducks","name":"Ducks","location":"Anaheim","logos":[{"href":"http://dispatcharr:8000/logos/history.png"}]}},
  {"team":{"displayName":"New York Rangers","shortDisplayName":"Rangers","name":"Rangers","location":"New York","logos":[{"href":"http://dispatcharr:8000/logos/history.png"}]}}]}]}]}
 JSON
+# A game starting 3 hours from now, in the second guide block (Eastern time, like the provider).
+sed -i "s/LATER_DATE/$(TZ=America/New_York date -d '+3 hour' '+%b %-d – %-I:%M %p ET' | tr a-z A-Z)/; s/LATER_UK/$(TZ=Europe/London date -d '+3 hour' '+%-I:%M %p UK')/" "$WORK/fake/streams.json"
 # A provider-style stale event, two days old.
 sed -i "s/STALE_DATE/$(date -u -d '-2 days' '+%b %-d' | tr a-z A-Z)/" "$WORK/fake/streams.json"
 docker network create "$NET" >/dev/null
@@ -275,6 +284,16 @@ for pair in "$PREMIER_ID|Live NHL Hockey: Flyers vs Avalanche" "$(channel_id "CA
 done
 # Placeholder (program titled like its own channel) on a ruled channel stays out of the row.
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "CA - STINGRAY NATURE" 0
+
+# Upcoming game: listed on the block covering its start time before it starts; the airing block stays plain.
+UPCOMING_ID=$(channel_id "CA - NHL GAME 02")
+curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$UPCOMING_ID" -H "$A" | python3 -c '
+import json,sys
+items=sorted(json.load(sys.stdin)["Items"], key=lambda i: i["StartDate"])
+names=[i["Name"] for i in items]
+assert len(items) == 2 and names[0] == "CA - NHL GAME 02" and names[1].startswith("BOSTON BRUINS @ DALLAS STARS"), names
+print("PASS: upcoming game on the block covering its start")'
+expect_in_row Sports "hasAired=false&isSports=true" "$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$UPCOMING_ID" -H "$A" | python3 -c 'import json,sys;print(next(i["Name"] for i in json.load(sys.stdin)["Items"] if i["Name"].startswith("BOSTON")))')" 1
 
 # No-event channel: airing placeholder removed, channel kept.
 expect "CA - NHL GAME 07"

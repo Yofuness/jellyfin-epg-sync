@@ -9,11 +9,14 @@ namespace Jellyfin.Plugin.EpgChannelNames;
 /// </summary>
 public static partial class EventTime
 {
+    private static readonly TimeZoneInfo _eastern = FindZone("America/New_York", -5);
+    private static readonly TimeZoneInfo _london = FindZone("Europe/London", 0);
+
     /// <summary>
     /// Parses the first "MON DD – H:MM AM/PM ZONE" in <paramref name="text"/>. The year is not in the title, so the
-    /// candidate closest to <paramref name="now"/> is used (handles December/January). Zones: ET = UTC-5,
-    /// UK/GMT/BST = UTC+0 (fixed; an hour off around DST changes is irrelevant for the stale check).
-    /// Unknown zones are read as UTC.
+    /// candidate closest to <paramref name="now"/> is used (handles December/January). Zones follow daylight saving:
+    /// ET = America/New_York, UK/GMT/BST = Europe/London (fixed UTC-5 / UTC+0 if the server has no time zone data).
+    /// No zone is read as UTC.
     /// </summary>
     /// <param name="text">Event title or full stream name.</param>
     /// <param name="now">Current UTC time.</param>
@@ -40,10 +43,11 @@ public static partial class EventTime
         }
 
         var minute = int.Parse(m.Groups["min"].Value, CultureInfo.InvariantCulture);
-        var offset = m.Groups["zone"].Value.ToUpperInvariant() switch
+        var zone = m.Groups["zone"].Value.ToUpperInvariant() switch
         {
-            "ET" or "EST" or "EDT" => TimeSpan.FromHours(-5),
-            _ => TimeSpan.Zero
+            "ET" or "EST" or "EDT" => _eastern,
+            "UK" or "GMT" or "BST" => _london,
+            _ => TimeZoneInfo.Utc
         };
 
         DateTime? best = null;
@@ -54,7 +58,7 @@ public static partial class EventTime
                 continue;
             }
 
-            var candidate = new DateTime(year, monthOnly.Month, day, hour, minute, 0, DateTimeKind.Utc) - offset;
+            var candidate = ToUtc(new DateTime(year, monthOnly.Month, day, hour, minute, 0, DateTimeKind.Unspecified), zone);
             if (best is null || (candidate - now).Duration() < (best.Value - now).Duration())
             {
                 best = candidate;
@@ -62,6 +66,22 @@ public static partial class EventTime
         }
 
         return best;
+    }
+
+    // Times skipped by a DST change (2:30 AM on spring-forward day) are read as the hour after.
+    private static DateTime ToUtc(DateTime local, TimeZoneInfo zone)
+        => zone.IsInvalidTime(local) ? TimeZoneInfo.ConvertTimeToUtc(local.AddHours(1), zone) : TimeZoneInfo.ConvertTimeToUtc(local, zone);
+
+    private static TimeZoneInfo FindZone(string id, int fallbackHours)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(id);
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.CreateCustomTimeZone(id, TimeSpan.FromHours(fallbackHours), id, id);
+        }
     }
 
     /// <summary>

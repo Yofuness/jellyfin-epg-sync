@@ -11,7 +11,7 @@ Keeps Jellyfin Live TV in sync with Dispatcharr: event channels show what's on (
 That's all. It runs after every guide refresh and every 15 minutes. To see it right away: Dashboard → Scheduled Tasks → Live TV → **Rename channels from EPG** → run.
 
 **Without step 4 the plugin does nothing** (it logs "Nothing to do"). With the URL and key set, the defaults do this:
-- **Event channels** (stream name like `CA - NHL GAME 01 : DUCKS @ RANGERS …`) are renamed to the event, or back to the plain name when nothing is on. The airing program gets the event title and the Live + Sports tags, so it appears in On Now and the Programs page's Sports row.
+- **Event channels** (stream name like `CA - NHL GAME 01 : DUCKS @ RANGERS …`) are renamed to the event, or back to the plain name when nothing is on. The guide block covering the game's start time ("7:00 PM ET" in the stream name) gets the event title, so tonight's games are listed hours before they start. It gets the event title and the Live + Sports tags, so it appears in On Now and the Programs page's Sports row.
 - **Empty event channels**: the current placeholder program is hidden, so only real games show as live.
 - **Finished events** left in stream names (start time more than 6 hours ago) count as nothing on.
 - **Team names**: generic sports titles like "Live NHL Ice Hockey" get the teams from the description. Team list from ESPN, refreshed monthly.

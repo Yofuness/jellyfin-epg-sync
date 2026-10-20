@@ -405,6 +405,25 @@ public partial class ChannelRenamer
     internal static bool IsAiring(LiveTvProgram program, DateTime now)
         => program.StartDate <= now && (program.EndDate ?? DateTime.MaxValue) > now;
 
+    /// <summary>
+    /// Returns whether a guide block on an event channel shows the event: the block covering the event's start time
+    /// (so tonight's game is listed before it starts), or the airing block once the event has started or has no time.
+    /// </summary>
+    /// <param name="program">The guide block.</param>
+    /// <param name="eventStart">The event's start time from its title, or null when undated.</param>
+    /// <param name="now">Current UTC time.</param>
+    /// <returns>True when the block gets the event.</returns>
+    internal static bool IsEventBlock(LiveTvProgram program, DateTime? eventStart, DateTime now)
+    {
+        if (eventStart is not { } start)
+        {
+            return IsAiring(program, now);
+        }
+
+        var coversStart = program.StartDate <= start && (program.EndDate ?? DateTime.MaxValue) > start;
+        return coversStart || (start <= now && IsAiring(program, now));
+    }
+
     private async Task ApplyEventProgramsAsync(
         LiveTvChannel channel,
         PluginConfiguration config,
@@ -421,6 +440,7 @@ public partial class ChannelRenamer
         var match = config.UseMatchupImages && title is not null && teams is not null ? TeamMatcher.Match(title, null, true, teams) : null;
         var matchup = await GetMatchupImageAsync(match, cancellationToken).ConfigureAwait(false);
         var gameTags = ParseTags(config.GameProgramTags);
+        var eventStart = EventTime.ParseStartUtc(title, now);
         var programs = _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
@@ -453,9 +473,9 @@ public partial class ChannelRenamer
                 continue;
             }
 
-            // Airing game: title, tags and the full stream name as description. Everything else is a plain,
-            // untagged placeholder; the block gets the game (if any) once it starts airing.
-            var isGame = airing && title is not null;
+            // Game block (covers the start time, or airing once started): title, tags and the full stream name as
+            // description. Everything else is a plain, untagged placeholder.
+            var isGame = title is not null && IsEventBlock(program, eventStart, now);
             var name = isGame ? title! : plainName;
             var overview = isGame ? streamName : string.Empty;
             var tags = isGame
