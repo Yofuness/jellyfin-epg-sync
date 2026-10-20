@@ -30,13 +30,15 @@ public sealed class TeamTests : IDisposable
 
     [Theory]
     // Real EPG data from the user's server.
-    [InlineData("Live NHL Ice Hockey", "Philadelphia Flyers v Colorado Avalanche. Coverage from the Wells Fargo Center.", "Live NHL: Flyers vs Avalanche")]
-    [InlineData("Live NHL Ice Hockey", "Philadelphia Flyers v Colorado", "Live NHL: Flyers vs Avalanche")]
-    [InlineData("EFL Championship", "Wolves play host to Portsmouth at Molineux in the Sky Bet Championship.", "Championship: Wolves vs Portsmouth")]
-    [InlineData("Live Premier League", "Manchester United v Manchester City from Old Trafford.", "Live Premier League: Man United vs Man City")]
-    [InlineData("Live Champions Cup Rugby", "Bath Rugby host Leinster at the Rec.", "Live Champions Cup: Bath Rugby vs Leinster")]
+    [InlineData("Live NHL Ice Hockey", "Philadelphia Flyers v Colorado Avalanche. Coverage from the Wells Fargo Center.", "Live NHL Hockey: Flyers vs Avalanche")]
+    [InlineData("Live NHL Ice Hockey", "Philadelphia Flyers v Colorado", "Live NHL Hockey: Flyers vs Avalanche")]
+    [InlineData("EFL Championship", "Wolves play host to Portsmouth at Molineux in the Sky Bet Championship.", "Championship Soccer: Wolves vs Portsmouth")]
+    [InlineData("Live Premier League", "Manchester United v Manchester City from Old Trafford.", "Live Premier League Soccer: Man United vs Man City")]
+    [InlineData("Live Champions Cup Rugby", "Bath Rugby host Leinster at the Rec.", "Live Champions Cup Rugby: Bath Rugby vs Leinster")]
     [InlineData("Live GAA", "Kerry v Dublin in the All-Ireland final.", "Live GAA: Kerry vs Dublin")]
-    [InlineData("LaLiga", "Deportivo Alaves v Real Madrid", "LaLiga: Alavés vs Real Madrid")]
+    [InlineData("Live GAA", "Kerry v Dublin in the All-Ireland football final.", "Live GAA Football: Kerry vs Dublin")]
+    [InlineData("All-Ireland Hurling", "Kilkenny v Tipperary at Croke Park.", "GAA Hurling: Kilkenny vs Tipperary")]
+    [InlineData("LaLiga", "Deportivo Alaves v Real Madrid", "LaLiga Soccer: Alavés vs Real Madrid")]
     public void BuildTitle_FindsBothTeams(string title, string overview, string expected)
     {
         Assert.Equal(expected, TeamMatcher.BuildTitle(title, overview, false, Teams));
@@ -109,14 +111,14 @@ public sealed class TeamTests : IDisposable
     public void BuildTitle_NoLeagueNamed_NeedsASportsProgram()
     {
         Assert.Null(TeamMatcher.BuildTitle("Match of the Day", "Arsenal v Chelsea", false, Teams));
-        Assert.Equal("Premier League: Arsenal vs Chelsea", TeamMatcher.BuildTitle("Match of the Day", "Arsenal v Chelsea", true, Teams));
+        Assert.Equal("Premier League Soccer: Arsenal vs Chelsea", TeamMatcher.BuildTitle("Match of the Day", "Arsenal v Chelsea", true, Teams));
     }
 
     [Fact]
     public void BuildTitle_SameTeamsInTwoLeagues_PrefersTheNamedOne()
     {
-        Assert.Equal("Champions League: Arsenal vs Real Madrid", TeamMatcher.BuildTitle("Champions League", "Arsenal v Real Madrid", false, Teams));
-        Assert.Equal("Premier League: Arsenal vs Chelsea", TeamMatcher.BuildTitle("Football", "Arsenal v Chelsea", true, Teams));
+        Assert.Equal("Champions League Soccer: Arsenal vs Real Madrid", TeamMatcher.BuildTitle("Champions League", "Arsenal v Real Madrid", false, Teams));
+        Assert.Equal("Premier League Soccer: Arsenal vs Chelsea", TeamMatcher.BuildTitle("Football", "Arsenal v Chelsea", true, Teams));
     }
 
     [Fact]
@@ -125,14 +127,14 @@ public sealed class TeamTests : IDisposable
         var program = new LiveTvProgram { Name = "Live NHL Ice Hockey", Overview = "Philadelphia Flyers v Colorado Avalanche" };
 
         Assert.True(ChannelRenamer.ApplyTeamTitle(program, Teams, false));
-        Assert.Equal("Live NHL: Flyers vs Avalanche", program.Name);
+        Assert.Equal("Live NHL Hockey: Flyers vs Avalanche", program.Name);
         Assert.False(ChannelRenamer.ApplyTeamTitle(program, Teams, false)); // second run: no change
 
         // Guide refresh: new EPG title and description.
         program.Name = "Live NHL Ice Hockey";
         program.Overview = "Edmonton Oilers v Calgary Flames";
         Assert.True(ChannelRenamer.ApplyTeamTitle(program, Teams, false));
-        Assert.Equal("Live NHL: Oilers vs Flames", program.Name);
+        Assert.Equal("Live NHL Hockey: Oilers vs Flames", program.Name);
 
         // Feature turned off: the EPG title comes back.
         Assert.True(ChannelRenamer.ApplyTeamTitle(program, null, false));

@@ -13,7 +13,7 @@ namespace Jellyfin.Plugin.EpgChannelNames.Teams;
 public static partial class TeamMatcher
 {
     /// <summary>
-    /// Builds a program title like "Live NHL: Flyers vs Avalanche" from the teams named in the title and description.
+    /// Builds a program title like "Live NHL Hockey: Flyers vs Avalanche" from the teams named in the title and description.
     /// </summary>
     /// <param name="title">Current program title, e.g. "Live NHL Ice Hockey".</param>
     /// <param name="overview">Program description, e.g. "Philadelphia Flyers v Colorado Avalanche".</param>
@@ -78,8 +78,9 @@ public static partial class TeamMatcher
             return $"{CricketFormat(text)}: {pair[0].ShortName} vs {pair[1].ShortName}{CricketDay(text)}";
         }
 
+        var label = league.Key == "gaa" ? GaaLabel(text) : league.Label;
         var live = title is not null && title.TrimStart().StartsWith("Live ", StringComparison.OrdinalIgnoreCase) ? "Live " : string.Empty;
-        return $"{live}{league.Label}: {pair[0].ShortName} vs {pair[1].ShortName}";
+        return $"{live}{label}: {pair[0].ShortName} vs {pair[1].ShortName}";
     }
 
     // "Test Cricket", "ODI Cricket", "T20 Cricket" or "Cricket", from normalized text.
@@ -88,6 +89,16 @@ public static partial class TeamMatcher
             : OdiRegex().IsMatch(text) ? "ODI Cricket"
             : T20Regex().IsMatch(text) ? "T20 Cricket"
             : "Cricket";
+
+    // GAA counties play both codes; the text says which.
+    private static string GaaLabel(string text)
+        => HurlingRegex().IsMatch(text) ? "GAA Hurling" : GaelicFootballRegex().IsMatch(text) ? "GAA Football" : "GAA";
+
+    [GeneratedRegex(@"\b(hurling|camogie)\b")]
+    private static partial Regex HurlingRegex();
+
+    [GeneratedRegex(@"\bfootball\b")]
+    private static partial Regex GaelicFootballRegex();
 
     // " · Day 3" for "day three" / "day 3" in normalized text.
     private static string CricketDay(string text)

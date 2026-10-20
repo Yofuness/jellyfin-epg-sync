@@ -254,8 +254,8 @@ TITLES=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$PREMIER_ID" -H
 for want in "F1: United States GP 2018" "Test Cricket: South Africa vs Australia · Day 3"; do
   if grep -qxF "$want" <<<"$TITLES"; then echo "PASS: $want"; else echo "FAIL: expected '$want', got: $TITLES"; exit 1; fi
 done
-if grep -qxF "Live NHL: Flyers vs Avalanche" <<<"$TITLES"; then echo "PASS: program retitled with team names"; else
-  echo "FAIL: expected 'Live NHL: Flyers vs Avalanche', got: $TITLES"
+if grep -qxF "Live NHL Hockey: Flyers vs Avalanche" <<<"$TITLES"; then echo "PASS: program retitled with team names"; else
+  echo "FAIL: expected 'Live NHL Hockey: Flyers vs Avalanche', got: $TITLES"
   docker logs "$NAME" 2>&1 | grep -iE "team|EpgChannelNames.*(WRN|ERR)" | tail -6
   exit 1
 fi

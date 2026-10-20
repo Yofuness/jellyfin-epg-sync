@@ -79,7 +79,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool UseChannelLogo { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets a value indicating whether sports programs are retitled with the two teams found in their description, e.g. "Live NHL: Flyers vs Avalanche".
+    /// Gets or sets a value indicating whether sports programs are retitled with the two teams found in their description, e.g. "Live NHL Hockey: Flyers vs Avalanche".
     /// </summary>
     public bool UseTeamNames { get; set; } = true;
 
