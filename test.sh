@@ -37,6 +37,8 @@ cat > "$WORK/tv/ch.m3u" <<'M3U'
 #EXTM3U
 #EXTINF:-1 tvg-id="nhl01" tvg-chno="101",NHL GAME 01 Old Team vs Stale Team
 http://127.0.0.1/none.ts
+#EXTINF:-1 tvg-id="nhl07" tvg-chno="107",NHL GAME 07
+http://127.0.0.1/none7.ts
 #EXTINF:-1 tvg-id="news" tvg-chno="5",CBC News
 http://127.0.0.1/none2.ts
 M3U
@@ -46,8 +48,10 @@ write_epg() {
   cat > "$WORK/tv/epg.xml" <<XML
 <?xml version="1.0"?><tv>
 <channel id="nhl01"><display-name>NHL GAME 01</display-name></channel>
+<channel id="nhl07"><display-name>NHL GAME 07</display-name></channel>
 <channel id="news"><display-name>CBC News</display-name></channel>
 <programme start="$a +0000" stop="$b +0000" channel="nhl01"><title>$1</title></programme>
+<programme start="$a +0000" stop="$b +0000" channel="nhl07"><title>NHL GAME 07</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="news"><title>The National</title></programme>
 </tv>
 XML
@@ -55,14 +59,16 @@ XML
 write_epg "Maple Leafs vs Canadiens"
 
 # Fake Dispatcharr: static JSON served at the real API paths (index.html per directory).
-mkdir -p "$WORK/fake/api/channels/channels/42/streams"
+mkdir -p "$WORK/fake/api/channels/channels/42/streams" "$WORK/fake/api/channels/channels/44/streams"
 cat > "$WORK/fake/api/channels/channels/index.html" <<'JSON'
 [{"id": 42, "name": "CA - NHL GAME 01", "channel_number": 101.0, "streams": [7]},
+ {"id": 44, "name": "CA - NHL GAME 07", "channel_number": 107.0, "streams": [9]},
  {"id": 43, "name": "CBC News", "channel_number": 5.0, "streams": [8]}]
 JSON
 cat > "$WORK/fake/api/channels/channels/42/streams/index.html" <<'JSON'
 [{"id": 7, "name": "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK"}]
 JSON
+echo '[{"id": 9, "name": "CA - NHL GAME 07 : "}]' > "$WORK/fake/api/channels/channels/44/streams/index.html"
 docker network create "$NET" >/dev/null
 docker run -d --name "$FAKE" --network "$NET" --network-alias dispatcharr -v "$WORK/fake":/srv:ro -w /srv python:3.12-alpine \
   python -m http.server 8000 >/dev/null
@@ -149,6 +155,16 @@ USER_ID=$(curl -sf "$J/Users" -H "$A" | python3 -c 'import json,sys;print(json.l
 SPORTS=$(curl -sf "$J/LiveTv/Programs/Recommended?userId=$USER_ID&hasAired=false&isSports=true&limit=12&fields=ChannelInfo" -H "$A" \
   | python3 -c 'import json,sys;print("\n".join(i["Name"] for i in json.load(sys.stdin)["Items"]))')
 if grep -qxF "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET" <<<"$SPORTS"; then echo "PASS: game in Sports row"; else echo "FAIL: game not in Sports row, got: $SPORTS"; exit 1; fi
+
+# No-game channel: placeholder program removed, channel kept.
+expect "NHL GAME 07"
+NOGAME_ID=$(curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"]=="NHL GAME 07"))')
+NOGAME_PROGS=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$NOGAME_ID" -H "$A" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["Items"]))')
+if [[ "$NOGAME_PROGS" == 0 ]]; then echo "PASS: no-game placeholder removed"; else echo "FAIL: no-game channel still has $NOGAME_PROGS programs"; exit 1; fi
+# Same query on the game channel must return its program, proving the query itself works.
+GAME_ID=$(curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"].startswith("NHL GAME 01")))')
+GAME_PROGS=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$GAME_ID" -H "$A" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["Items"]))')
+if [[ "$GAME_PROGS" -gt 0 ]]; then echo "PASS: game channel keeps its program"; else echo "FAIL: game channel has no programs"; exit 1; fi
 
 # Dispatcharr down: keep the last known game (programs were renamed to it) instead of failing...
 docker stop "$FAKE" >/dev/null

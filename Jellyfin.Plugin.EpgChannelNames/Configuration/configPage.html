@@ -34,6 +34,10 @@
           <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Also rename guide programs to the game title</span></label>
           <div class="fieldDescription">Fixes stale titles on the Programs page and guide. Only for channels whose title comes from Dispatcharr.</div>
         </div>
+        <div class="checkboxContainer">
+          <label><input is="emby-checkbox" type="checkbox" id="RemoveNoGamePrograms" /><span>Hide programs on game channels with no game</span></label>
+          <div class="fieldDescription">Removes Dispatcharr's placeholder programs (which only play a logo) from the Programs page and guide. The channel itself stays.</div>
+        </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="GameProgramTags" label="Tags for game programs" />
           <div class="fieldDescription">Comma-separated. <code>Live</code> ranks games higher in "On Now"; <code>Sports</code> puts them in the Programs page's Sports row. Leave empty for none.</div>
@@ -58,6 +62,7 @@
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
           fields.forEach(function (f) { page.querySelector('#' + f).value = config[f]; });
           page.querySelector('#RenamePrograms').checked = config.RenamePrograms;
+          page.querySelector('#RemoveNoGamePrograms').checked = config.RemoveNoGamePrograms;
           Dashboard.hideLoadingMsg();
         });
       });
@@ -69,6 +74,7 @@
           config.IntervalMinutes = parseInt(config.IntervalMinutes, 10) || 15;
           config.ProgramWindowHours = parseInt(config.ProgramWindowHours, 10) || 12;
           config.RenamePrograms = page.querySelector('#RenamePrograms').checked;
+          config.RemoveNoGamePrograms = page.querySelector('#RemoveNoGamePrograms').checked;
           ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
         });
         return false;

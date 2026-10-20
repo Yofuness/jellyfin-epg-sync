@@ -119,7 +119,7 @@ public class ChannelRenamer
             IncludeItemTypes = new[] { BaseItemKind.LiveTvChannel }
         }).OfType<LiveTvChannel>().ToList();
 
-        int matched = 0, renamed = 0, fromDispatcharr = 0, fromEpg = 0, nothingAiring = 0, programsRenamed = 0;
+        int matched = 0, renamed = 0, fromDispatcharr = 0, fromEpg = 0, nothingAiring = 0, programsRenamed = 0, programsRemoved = 0;
         for (var i = 0; i < channels.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -178,7 +178,13 @@ public class ChannelRenamer
             var template = title is null ? config.NoProgramTemplate : config.NameTemplate;
             var newName = BuildName(template, title, original, channel.Number, match.Value);
 
-            if (dispatcharrListed && config.RenamePrograms)
+            if (dispatcharrListed && title is null && config.RemoveNoGamePrograms)
+            {
+                // No game tonight: Dispatcharr's placeholders would only show a logo stream. Hide them.
+                // Jellyfin re-adds them on each guide refresh; this runs again right after.
+                programsRemoved += RemovePrograms(channel, now, config.ProgramWindowHours);
+            }
+            else if (dispatcharrListed && config.RenamePrograms)
             {
                 // The guide/Programs page shows program titles, which for these channels are Dispatcharr's
                 // placeholder (often a days-old channel name). Make them say the same as the channel.
@@ -202,7 +208,7 @@ public class ChannelRenamer
         progress.Report(100);
 
         _logger.LogInformation(
-            "Checked {Total} channels: {Matched} matched '{Regex}', {Renamed} renamed; titles from Dispatcharr {FromDispatcharr}, from EPG {FromEpg}, nothing airing {NothingAiring}; {ProgramsRenamed} programs renamed",
+            "Checked {Total} channels: {Matched} matched '{Regex}', {Renamed} renamed; titles from Dispatcharr {FromDispatcharr}, from EPG {FromEpg}, nothing airing {NothingAiring}; {ProgramsRenamed} programs renamed, {ProgramsRemoved} programs removed",
             channels.Count,
             matched,
             config.ChannelNameRegex,
@@ -210,7 +216,8 @@ public class ChannelRenamer
             fromDispatcharr,
             fromEpg,
             nothingAiring,
-            programsRenamed);
+            programsRenamed,
+            programsRemoved);
         if (matched == 0 && channels.Count > 0)
         {
             _logger.LogWarning("No Live TV channels matched '{Regex}'. Check 'Channels to rename' in the plugin settings", config.ChannelNameRegex);
@@ -230,15 +237,37 @@ public class ChannelRenamer
     internal static string[] ParseTags(string? tags)
         => (tags ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private async Task<int> RenameProgramsAsync(LiveTvChannel channel, string programName, string[] tags, DateTime now, int windowHours, CancellationToken cancellationToken)
+    private int RemovePrograms(LiveTvChannel channel, DateTime now, int windowHours)
     {
-        var programs = _libraryManager.GetItemList(new InternalItemsQuery
+        var programs = GetProgramsInWindow(channel, now, windowHours);
+        foreach (var program in programs)
+        {
+            // Same options Jellyfin's GuideManager uses when it drops stale programs.
+            _libraryManager.DeleteItem(
+                program,
+                new DeleteOptions
+                {
+                    DeleteFileLocation = false,
+                    DeleteFromExternalProvider = false
+                },
+                false);
+        }
+
+        return programs.Count;
+    }
+
+    private IReadOnlyList<BaseItem> GetProgramsInWindow(LiveTvChannel channel, DateTime now, int windowHours)
+        => _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
             ChannelIds = new[] { channel.Id },
             MinEndDate = now,
             MaxStartDate = now.AddHours(Math.Max(0, windowHours))
         });
+
+    private async Task<int> RenameProgramsAsync(LiveTvChannel channel, string programName, string[] tags, DateTime now, int windowHours, CancellationToken cancellationToken)
+    {
+        var programs = GetProgramsInWindow(channel, now, windowHours);
 
         var count = 0;
         foreach (var program in programs)

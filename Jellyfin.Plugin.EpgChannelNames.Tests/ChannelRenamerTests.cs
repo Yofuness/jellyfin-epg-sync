@@ -46,6 +46,17 @@ public class ChannelRenamerTests
         _dispatcharr
             .Setup(d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _streamNames);
+        // Deleting a program makes it disappear from later queries, like the real library.
+        _library
+            .Setup(l => l.DeleteItem(It.IsAny<BaseItem>(), It.IsAny<DeleteOptions>(), It.IsAny<bool>()))
+            .Callback((BaseItem item, DeleteOptions _, bool _) =>
+            {
+                foreach (var key in _programItems.Where(kv => kv.Value == item).Select(kv => kv.Key).ToList())
+                {
+                    _programs.Remove(key);
+                    _programItems.Remove(key);
+                }
+            });
         BaseItem.LibraryManager = _library.Object;
     }
 
@@ -199,6 +210,7 @@ public class ChannelRenamerTests
     public async Task Dispatcharr_NoGame_ProgramIsNotTagged()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.RemoveNoGamePrograms = false;
         var channel = AddChannel("CA - NHL GAME 07", "placeholder", number: "10");
         _streamNames["10"] = "CA - NHL GAME 07 : ";
 
@@ -244,9 +256,64 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task Dispatcharr_NoGame_PlaceholderProgramIsRemoved()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 07", "CA - NHL GAME 07", number: "10");
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
+        var placeholder = GetProgram(channel.Id)!;
+
+        await RunAsync();
+
+        _library.Verify(
+            l => l.DeleteItem(placeholder, It.Is<DeleteOptions>(o => !o.DeleteFileLocation && !o.DeleteFromExternalProvider), false),
+            Times.Once());
+        Assert.Null(GetProgram(channel.Id));
+        Assert.Equal("NHL GAME 07", channel.Name); // channel itself stays
+    }
+
+    [Fact]
+    public async Task Dispatcharr_Game_ProgramIsNotRemoved()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        AddChannel("CA - NHL GAME 03", "placeholder", number: "14");
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+
+        await RunAsync();
+
+        _library.Verify(l => l.DeleteItem(It.IsAny<BaseItem>(), It.IsAny<DeleteOptions>(), It.IsAny<bool>()), Times.Never());
+    }
+
+    [Fact]
+    public async Task EpgPath_ProgramsAreNeverRemoved()
+    {
+        // Dispatcharr configured but doesn't list the channel: real EPG data, keep it.
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        AddChannel("CA - NHL GAME 01", "Real EPG Game", number: "99");
+
+        await RunAsync();
+
+        _library.Verify(l => l.DeleteItem(It.IsAny<BaseItem>(), It.IsAny<DeleteOptions>(), It.IsAny<bool>()), Times.Never());
+    }
+
+    [Fact]
+    public async Task RemoveNoGamePrograms_WorksWithRenameProgramsOff()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.RenamePrograms = false;
+        var channel = AddChannel("CA - NHL GAME 07", "placeholder", number: "10");
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
+
+        await RunAsync();
+
+        Assert.Null(GetProgram(channel.Id));
+    }
+
+    [Fact]
     public async Task Dispatcharr_NoGame_ProgramGetsChannelName()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.RemoveNoGamePrograms = false;
         var channel = AddChannel("CA - NHL GAME 07", "CA - NHL GAME 07 : WINNIPEG JETS @ CHICAGO BLACKHAWKS OCT 15", number: "10");
         _streamNames["10"] = "CA - NHL GAME 07 : ";
 
@@ -308,7 +375,7 @@ public class ChannelRenamerTests
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(
-            "Checked 3 channels: 2 matched 'NHL GAME \\d+', 2 renamed; titles from Dispatcharr 1, from EPG 0, nothing airing 1; 2 programs renamed",
+            "Checked 3 channels: 2 matched 'NHL GAME \\d+', 2 renamed; titles from Dispatcharr 1, from EPG 0, nothing airing 1; 1 programs renamed, 1 programs removed",
             logger.Messages);
         Assert.DoesNotContain(logger.Messages, m => m.StartsWith("No Live TV channels matched", StringComparison.Ordinal));
     }

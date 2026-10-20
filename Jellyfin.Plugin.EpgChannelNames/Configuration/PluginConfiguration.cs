@@ -43,6 +43,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool RenamePrograms { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether placeholder programs are removed from Dispatcharr game channels with no game.
+    /// </summary>
+    public bool RemoveNoGamePrograms { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets comma-separated tags added to renamed game programs. Jellyfin treats "Live" and "Sports" as program flags.
     /// </summary>
     public string GameProgramTags { get; set; } = "Live,Sports";

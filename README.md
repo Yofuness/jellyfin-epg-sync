@@ -34,7 +34,7 @@ Many providers ship game channels with an empty or stale EPG; the matchup only l
 2. In the plugin settings, set **Dispatcharr URL** (e.g. `http://localhost:9191`) and **API key**, then Save.
 3. Optional: **Game title regex** controls what part of the stream name is used. Default: text after `:` up to `/`.
 
-Game programs are also renamed and tagged `Live` + `Sports`, so they rank in the Programs page's "On Now" row and appear under Sports.
+Game programs are also renamed and tagged `Live` + `Sports`, so they rank in the Programs page's "On Now" row and appear under Sports. Game channels with no game tonight have their placeholder programs hidden (the channel stays).
 
 Channels are matched by channel number. If Dispatcharr is unreachable, the plugin falls back to the EPG.
 
