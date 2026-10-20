@@ -152,7 +152,7 @@ public sealed class TeamDatabase : ITeamDatabase, IDisposable
     }
 
     private static IReadOnlyList<Team> WithBuiltIn(IReadOnlyList<Team>? teams)
-        => (teams ?? Array.Empty<Team>()).Concat(League.GaaCounties).ToList();
+        => (teams ?? Array.Empty<Team>()).Concat(League.BuiltInTeams).ToList();
 
     private async Task<IReadOnlyList<Team>?> ReadCacheAsync(CancellationToken cancellationToken)
     {

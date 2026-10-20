@@ -509,7 +509,9 @@ public partial class ChannelRenamer
         }
 
         var epgTitle = applied is null ? program.Name : program.ProviderIds.GetValueOrDefault(TitleOriginalKey) ?? program.Name;
-        var title = teams is null ? null : TeamMatcher.BuildTitle(epgTitle, program.Overview, isSports, teams);
+        var title = teams is null ? null
+            : MotorsportMatcher.BuildTitle(epgTitle, program.Overview, DateTime.UtcNow.Year)
+                ?? TeamMatcher.BuildTitle(epgTitle, program.Overview, isSports, teams);
         if (title is null)
         {
             if (applied is null)

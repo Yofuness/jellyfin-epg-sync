@@ -54,6 +54,43 @@ public sealed class TeamTests : IDisposable
         Assert.Null(TeamMatcher.BuildTitle(title, overview, true, Teams));
     }
 
+    [Theory]
+    [InlineData("Test Cricket", "Day three of the second Test between South Africa and Australia at St George's Park in Gqeberha.", "Test Cricket: South Africa vs Australia · Day 3")]
+    [InlineData("Live ODI Cricket", "England v India from Lord's.", "ODI Cricket: England vs India")]
+    [InlineData("Cricket", "Day 2 of the T20 World Cup match between Pakistan and New Zealand.", "T20 Cricket: Pakistan vs New Zealand · Day 2")]
+    public void BuildTitle_Cricket(string title, string overview, string expected)
+    {
+        Assert.Equal(expected, TeamMatcher.BuildTitle(title, overview, true, Teams));
+    }
+
+    [Fact]
+    public void BuildTitle_CountriesWithoutCricket_AreNotCricket()
+    {
+        Assert.Null(TeamMatcher.BuildTitle("Six Nations Rugby", "England v Ireland at Twickenham.", true, Teams));
+    }
+
+    [Theory]
+    // Real EPG data from the user's server.
+    [InlineData("Formula 1 Motor Racing", "The 2018 United States Grand Prix arrives from the Circuit of the Americas in Texas. Lewis Hamilton has won this race a record six times.", "F1: United States GP 2018")]
+    [InlineData("Formula 1", "It's lights out for the Bahrain Grand Prix in Malaysia. Oscar Piastri was the previous Bahrain race winner.", "F1: Bahrain GP")]
+    [InlineData("Formula 1", "A round-up of the leading stories and features with Sky's Formula 1 presenters during the 2026 Hungarian Grand Prix.", "F1: Hungarian GP · Highlights")]
+    [InlineData("Formula 1 Motor Racing", "The United States Grand Prix from the Circuit of The Americas in Austin, Texas. Lewis Hamilton was victorious here last year, winning from pole position.", "F1: United States GP")]
+    [InlineData("F1 Qualifying", "Live coverage from the Monaco Grand Prix.", "F1: Monaco GP · Qualifying")]
+    [InlineData("Formula 1", "Practice 2 for the São Paulo Grand Prix at Interlagos.", "F1: São Paulo GP · Practice 2")]
+    [InlineData("Formula 1", "The Abu Dhabi Grand Prix sprint shootout.", "F1: Abu Dhabi GP · Sprint Qualifying")]
+    public void Motorsport_BuildsGrandPrixTitles(string title, string overview, string expected)
+    {
+        Assert.Equal(expected, MotorsportMatcher.BuildTitle(title, overview, 2026));
+    }
+
+    [Theory]
+    [InlineData("Formula 1", "Featuring all the action and highlights from Formula 1 racing.")]
+    [InlineData("MotoGP", "The Japanese Grand Prix from Motegi.")]
+    public void Motorsport_LeavesOthersAlone(string title, string overview)
+    {
+        Assert.Null(MotorsportMatcher.BuildTitle(title, overview, 2026));
+    }
+
     [Fact]
     public void BuildTitle_NoLeagueNamed_NeedsASportsProgram()
     {
@@ -130,7 +167,7 @@ public sealed class TeamTests : IDisposable
 
         var teams = await db.GetTeamsAsync(CancellationToken.None);
 
-        Assert.All(teams, t => Assert.Equal("gaa", t.League));
+        Assert.All(teams, t => Assert.Contains(t.League, new[] { "gaa", "cricket" }));
     }
 
     [Fact]
@@ -169,7 +206,7 @@ public sealed class TeamTests : IDisposable
             TeamDatabase.ToTeam(L("champions-cup"), "Bath Rugby", "Bath Rugby", "Bath Rugby", null, null),
             TeamDatabase.ToTeam(L("champions-cup"), "Leinster", "Leinster", "Leinster", null, null),
         };
-        return TeamDatabase.DropSharedWeakAliases(raw).Concat(League.GaaCounties).ToList();
+        return TeamDatabase.DropSharedWeakAliases(raw).Concat(League.BuiltInTeams).ToList();
     }
 
     private TeamDatabase CreateDb(HttpMessageHandler handler)

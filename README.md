@@ -15,6 +15,7 @@ That's all. It runs after every guide refresh and every 15 minutes. To see it ri
 - **Empty event channels**: the current placeholder program is hidden, so only real games show as live.
 - **Finished events** left in stream names (start time more than 6 hours ago) count as nothing on.
 - **Team names**: generic sports titles like "Live NHL Ice Hockey" get the teams from the description. Team list from ESPN, refreshed monthly.
+- **Cricket and F1**: "Test Cricket" becomes `Test Cricket: South Africa vs Australia · Day 3`; "Formula 1 Motor Racing" becomes `F1: United States GP 2018` (year shown only for replays, plus Qualifying / Sprint / Practice / Highlights when the description says so). Tennis guides carry no player names, so tennis titles stay as they are.
 - **Program images**: programs without an image use the channel logo.
 - **Programs page rows**: each channel's programs go into a row picked from its Dispatcharr group name (`… SPORTS` / `NHL PPV` = Sports, `DOCUMENTARY` = Shows, `NEWS` = News, `KIDS` = Kids, `MOVIES` / `CINEMA` = Movies). Groups that match nothing get no row.
 - Placeholder programs (titled like their channel, or "Channel No Longer Available") are left alone.

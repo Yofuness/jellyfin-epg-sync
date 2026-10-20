@@ -34,16 +34,26 @@ public sealed record League(string Key, string Label, string? EspnPath, IReadOnl
         new League("urc", "URC", "rugby/270557", new[] { "URC", "United Rugby Championship" }),
         new League("champions-cup", "Champions Cup", "rugby/271937", new[] { "Champions Cup" }),
         new League("gaa", "GAA", null, new[] { "GAA", "Hurling", "Gaelic", "Camogie", "All-Ireland" }, KeywordRequired: true),
+
+        // National teams; country names appear in football and rugby too, so "Cricket" must be in the text.
+        new League("cricket", "Cricket", null, new[] { "Cricket" }, KeywordRequired: true),
     };
 
     /// <summary>
-    /// Gets the built-in GAA county teams. ESPN does not cover GAA, and the 32 counties don't change.
+    /// Gets the teams of the leagues ESPN doesn't cover: GAA counties and cricket nations. They don't change.
     /// </summary>
-    public static IReadOnlyList<Team> GaaCounties { get; } = new[]
+    public static IReadOnlyList<Team> BuiltInTeams { get; } = new[]
     {
         "Antrim", "Armagh", "Carlow", "Cavan", "Clare", "Cork", "Derry", "Donegal", "Down", "Dublin", "Fermanagh",
         "Galway", "Kerry", "Kildare", "Kilkenny", "Laois", "Leitrim", "Limerick", "Longford", "Louth", "Mayo",
         "Meath", "Monaghan", "Offaly", "Roscommon", "Sligo", "Tipperary", "Tyrone", "Waterford", "Westmeath",
         "Wexford", "Wicklow"
-    }.Select(c => new Team("gaa", c, new[] { c }, System.Array.Empty<string>(), null)).ToArray();
+    }.Select(c => new Team("gaa", c, new[] { c }, System.Array.Empty<string>(), null))
+    .Concat(new[]
+    {
+        "England", "Australia", "India", "South Africa", "New Zealand", "Pakistan", "Sri Lanka", "West Indies",
+        "Bangladesh", "Zimbabwe", "Afghanistan", "Ireland", "Scotland", "Netherlands", "Nepal", "UAE", "USA",
+        "Oman", "Namibia"
+    }.Select(c => new Team("cricket", c, new[] { c }, System.Array.Empty<string>(), null)))
+    .ToArray();
 }

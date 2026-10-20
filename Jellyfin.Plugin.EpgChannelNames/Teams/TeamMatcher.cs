@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Jellyfin.Plugin.EpgChannelNames.Teams;
 
 /// <summary>
 /// Finds the two teams of a sports program in its title and description.
 /// </summary>
-public static class TeamMatcher
+public static partial class TeamMatcher
 {
     /// <summary>
     /// Builds a program title like "Live NHL: Flyers vs Avalanche" from the teams named in the title and description.
@@ -72,9 +73,47 @@ public static class TeamMatcher
         }
 
         var (league, pair) = candidates.FirstOrDefault(c => named.Contains(c.League.Key), candidates[0]);
+        if (league.Key == "cricket")
+        {
+            return $"{CricketFormat(text)}: {pair[0].ShortName} vs {pair[1].ShortName}{CricketDay(text)}";
+        }
+
         var live = title is not null && title.TrimStart().StartsWith("Live ", StringComparison.OrdinalIgnoreCase) ? "Live " : string.Empty;
         return $"{live}{league.Label}: {pair[0].ShortName} vs {pair[1].ShortName}";
     }
+
+    // "Test Cricket", "ODI Cricket", "T20 Cricket" or "Cricket", from normalized text.
+    private static string CricketFormat(string text)
+        => TestRegex().IsMatch(text) ? "Test Cricket"
+            : OdiRegex().IsMatch(text) ? "ODI Cricket"
+            : T20Regex().IsMatch(text) ? "T20 Cricket"
+            : "Cricket";
+
+    // " · Day 3" for "day three" / "day 3" in normalized text.
+    private static string CricketDay(string text)
+    {
+        var match = DayRegex().Match(text);
+        if (!match.Success)
+        {
+            return string.Empty;
+        }
+
+        var day = match.Groups[1].Value;
+        var number = Array.IndexOf(new[] { "one", "two", "three", "four", "five" }, day) is var i and >= 0 ? (i + 1).ToString(CultureInfo.InvariantCulture) : day;
+        return " · Day " + number;
+    }
+
+    [GeneratedRegex(@"\btests?\b")]
+    private static partial Regex TestRegex();
+
+    [GeneratedRegex(@"\b(odi|one-day|one day)\b")]
+    private static partial Regex OdiRegex();
+
+    [GeneratedRegex(@"\b(t20|twenty20)\b")]
+    private static partial Regex T20Regex();
+
+    [GeneratedRegex(@"\bday (one|two|three|four|five|[1-5])\b")]
+    private static partial Regex DayRegex();
 
     /// <summary>
     /// Lowercases and removes accents, so "Alavés" matches "ALAVES".

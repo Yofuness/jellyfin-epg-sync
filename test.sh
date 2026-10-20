@@ -63,8 +63,8 @@ http://127.0.0.1/none140.ts
 http://127.0.0.1/none2.ts
 M3U
 write_epg() {
-  local a b c
-  a=$(date -u -d '-1 hour' +%Y%m%d%H%M%S); b=$(date -u -d '+2 hour' +%Y%m%d%H%M%S); c=$(date -u -d '+6 hour' +%Y%m%d%H%M%S)
+  local a b c d
+  a=$(date -u -d '-1 hour' +%Y%m%d%H%M%S); b=$(date -u -d '+2 hour' +%Y%m%d%H%M%S); c=$(date -u -d '+6 hour' +%Y%m%d%H%M%S); d=$(date -u -d '+9 hour' +%Y%m%d%H%M%S)
   cat > "$WORK/tv/epg.xml" <<XML
 <?xml version="1.0"?><tv>
 <channel id="nhl01"><display-name>NHL GAME 01</display-name></channel>
@@ -83,6 +83,8 @@ write_epg() {
 <programme start="$a +0000" stop="$b +0000" channel="stingray"><title>CA - STINGRAY NATURE</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="gaatv4"><title>UK - GAATV 004</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="premier2"><title>Live NHL Ice Hockey</title><desc>Philadelphia Flyers v Colorado Avalanche</desc></programme>
+<programme start="$b +0000" stop="$c +0000" channel="premier2"><title>Formula 1 Motor Racing</title><desc>The 2018 United States Grand Prix arrives from the Circuit of the Americas in Texas.</desc></programme>
+<programme start="$c +0000" stop="$d +0000" channel="premier2"><title>Test Cricket</title><desc>Day three of the second Test between South Africa and Australia at St George's Park.</desc></programme>
 <programme start="$a +0000" stop="$b +0000" channel="news"><title>The National</title></programme>
 </tv>
 XML
@@ -247,6 +249,9 @@ fi
 # Team database: generic EPG title + teams in the description -> team names in the title.
 PREMIER_ID=$(channel_id_exact "UK - PREMIER SPORTS 2 SD")
 TITLES=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$PREMIER_ID" -H "$A" | python3 -c 'import json,sys;print("\n".join(i["Name"] for i in json.load(sys.stdin)["Items"]))')
+for want in "F1: United States GP 2018" "Test Cricket: South Africa vs Australia · Day 3"; do
+  if grep -qxF "$want" <<<"$TITLES"; then echo "PASS: $want"; else echo "FAIL: expected '$want', got: $TITLES"; exit 1; fi
+done
 if grep -qxF "Live NHL: Flyers vs Avalanche" <<<"$TITLES"; then echo "PASS: program retitled with team names"; else
   echo "FAIL: expected 'Live NHL: Flyers vs Avalanche', got: $TITLES"
   docker logs "$NAME" 2>&1 | grep -iE "team|EpgChannelNames.*(WRN|ERR)" | tail -6
