@@ -182,6 +182,68 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task Dispatcharr_GameProgram_IsTaggedLiveAndSports()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "placeholder", number: "14");
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+
+        await RunAsync();
+
+        var program = _programItems[channel.Id];
+        Assert.True(program.IsLive);
+        Assert.True(program.IsSports);
+    }
+
+    [Fact]
+    public async Task Dispatcharr_NoGame_ProgramIsNotTagged()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 07", "placeholder", number: "10");
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
+
+        await RunAsync();
+
+        Assert.Empty(_programItems[channel.Id].Tags);
+    }
+
+    [Fact]
+    public async Task Tags_ExistingTagsKept_NotDuplicated()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "placeholder", number: "14");
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+        GetProgram(channel.Id)!.Tags = new[] { "HD", "sports" };
+
+        await RunAsync();
+
+        Assert.Equal(new[] { "HD", "sports", "Live" }, _programItems[channel.Id].Tags);
+    }
+
+    [Fact]
+    public async Task Tags_AddedLater_TriggerSave()
+    {
+        // Program already has the right name (e.g. from v1.2.0) but no tags yet.
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "SHARKS @ LEAFS", number: "14");
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+
+        await RunAsync();
+
+        Assert.True(_programItems[channel.Id].IsSports);
+    }
+
+    [Theory]
+    [InlineData("Live,Sports", new[] { "Live", "Sports" })]
+    [InlineData(" Live , ,Sports ", new[] { "Live", "Sports" })]
+    [InlineData("", new string[0])]
+    [InlineData(null, new string[0])]
+    public void ParseTags_SplitsAndTrims(string? input, string[] expected)
+    {
+        Assert.Equal(expected, ChannelRenamer.ParseTags(input));
+    }
+
+    [Fact]
     public async Task Dispatcharr_NoGame_ProgramGetsChannelName()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";

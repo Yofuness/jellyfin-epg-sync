@@ -43,6 +43,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool RenamePrograms { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets comma-separated tags added to renamed game programs. Jellyfin treats "Live" and "Sports" as program flags.
+    /// </summary>
+    public string GameProgramTags { get; set; } = "Live,Sports";
+
+    /// <summary>
     /// Gets or sets how many hours ahead programs are renamed.
     /// </summary>
     public int ProgramWindowHours { get; set; } = 12;

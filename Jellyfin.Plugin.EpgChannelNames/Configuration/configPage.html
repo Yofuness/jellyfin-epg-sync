@@ -35,6 +35,10 @@
           <div class="fieldDescription">Fixes stale titles on the Programs page and guide. Only for channels whose title comes from Dispatcharr.</div>
         </div>
         <div class="inputContainer">
+          <input is="emby-input" type="text" id="GameProgramTags" label="Tags for game programs" />
+          <div class="fieldDescription">Comma-separated. <code>Live</code> ranks games higher in "On Now"; <code>Sports</code> puts them in the Programs page's Sports row. Leave empty for none.</div>
+        </div>
+        <div class="inputContainer">
           <input is="emby-input" type="number" id="ProgramWindowHours" min="1" label="Hours ahead to rename programs" />
         </div>
         <div class="inputContainer">
@@ -47,7 +51,7 @@
   <script type="text/javascript">
     (function () {
       var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
-      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'StreamTitleRegex', 'ProgramWindowHours', 'IntervalMinutes'];
+      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'StreamTitleRegex', 'GameProgramTags', 'ProgramWindowHours', 'IntervalMinutes'];
       var page = document.querySelector('#EpgChannelNamesConfigPage');
       page.addEventListener('pageshow', function () {
         Dashboard.showLoadingMsg();

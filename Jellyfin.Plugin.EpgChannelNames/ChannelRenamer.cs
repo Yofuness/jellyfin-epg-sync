@@ -182,7 +182,9 @@ public class ChannelRenamer
             {
                 // The guide/Programs page shows program titles, which for these channels are Dispatcharr's
                 // placeholder (often a days-old channel name). Make them say the same as the channel.
-                programsRenamed += await RenameProgramsAsync(channel, title ?? newName, now, config.ProgramWindowHours, cancellationToken).ConfigureAwait(false);
+                // Real games also get tags (default Live + Sports) so they rank in "On Now" and appear in the Sports row.
+                var tags = title is null ? Array.Empty<string>() : ParseTags(config.GameProgramTags);
+                programsRenamed += await RenameProgramsAsync(channel, title ?? newName, tags, now, config.ProgramWindowHours, cancellationToken).ConfigureAwait(false);
             }
 
             if (newName == channel.Name && applied == newName)
@@ -220,7 +222,15 @@ public class ChannelRenamer
         }
     }
 
-    private async Task<int> RenameProgramsAsync(LiveTvChannel channel, string programName, DateTime now, int windowHours, CancellationToken cancellationToken)
+    /// <summary>
+    /// Splits a comma-separated tag list.
+    /// </summary>
+    /// <param name="tags">e.g. "Live, Sports".</param>
+    /// <returns>Trimmed, non-empty tags.</returns>
+    internal static string[] ParseTags(string? tags)
+        => (tags ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private async Task<int> RenameProgramsAsync(LiveTvChannel channel, string programName, string[] tags, DateTime now, int windowHours, CancellationToken cancellationToken)
     {
         var programs = _libraryManager.GetItemList(new InternalItemsQuery
         {
@@ -233,12 +243,18 @@ public class ChannelRenamer
         var count = 0;
         foreach (var program in programs)
         {
-            if (program.Name == programName)
+            var missingTags = tags.Where(t => !program.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)).ToArray();
+            if (program.Name == programName && missingTags.Length == 0)
             {
                 continue;
             }
 
             program.Name = programName;
+            if (missingTags.Length > 0)
+            {
+                program.Tags = program.Tags.Concat(missingTags).ToArray();
+            }
+
             await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             count++;
         }

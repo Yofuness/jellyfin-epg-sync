@@ -144,6 +144,12 @@ rename_and_wait
 expect "NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET"
 expect "CBC News"
 
+# The game program is renamed and shows up in the web Programs page's "Sports" row query.
+USER_ID=$(curl -sf "$J/Users" -H "$A" | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["Id"])')
+SPORTS=$(curl -sf "$J/LiveTv/Programs/Recommended?userId=$USER_ID&hasAired=false&isSports=true&limit=12&fields=ChannelInfo" -H "$A" \
+  | python3 -c 'import json,sys;print("\n".join(i["Name"] for i in json.load(sys.stdin)["Items"]))')
+if grep -qxF "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET" <<<"$SPORTS"; then echo "PASS: game in Sports row"; else echo "FAIL: game not in Sports row, got: $SPORTS"; exit 1; fi
+
 # Dispatcharr down: keep the last known game (programs were renamed to it) instead of failing...
 docker stop "$FAKE" >/dev/null
 rename_and_wait
