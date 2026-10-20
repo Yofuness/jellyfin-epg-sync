@@ -31,19 +31,19 @@
           <div class="fieldDescription">Uses the <code>title</code> group. Default takes the text after <code>:</code> up to <code>/</code>.</div>
         </div>
         <div class="checkboxContainer">
-          <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Also rename guide programs to the game title</span></label>
-          <div class="fieldDescription">Fixes stale titles on the Programs page and guide. Only for channels whose title comes from Dispatcharr.</div>
+          <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Also update guide programs</span></label>
+          <div class="fieldDescription">The program airing now gets the game title and the full stream name as description; later blocks become plain placeholders. Only for channels whose title comes from Dispatcharr.</div>
         </div>
         <div class="checkboxContainer">
           <label><input is="emby-checkbox" type="checkbox" id="RemoveNoGamePrograms" /><span>Hide programs on game channels with no game</span></label>
-          <div class="fieldDescription">Removes Dispatcharr's placeholder programs (which only play a logo) from the Programs page and guide. The channel itself stays.</div>
+          <div class="fieldDescription">Removes the airing placeholder (which only plays a logo) so it doesn't show on the Programs page. Later blocks stay, so a game added later still gets a program. The channel itself stays.</div>
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="GameProgramTags" label="Tags for game programs" />
           <div class="fieldDescription">Comma-separated. <code>Live</code> ranks games higher in "On Now"; <code>Sports</code> puts them in the Programs page's Sports row. Leave empty for none.</div>
         </div>
         <div class="inputContainer">
-          <input is="emby-input" type="number" id="ProgramWindowHours" min="1" label="Hours ahead to rename programs" />
+          <input is="emby-input" type="number" id="ProgramWindowHours" min="1" label="Hours ahead to check programs" />
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="number" id="IntervalMinutes" min="1" label="Default refresh interval (minutes, applies on first install)" />

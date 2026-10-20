@@ -29,6 +29,7 @@ public class ChannelRenamerTests
     private readonly Dictionary<Guid, string> _programs = new();
     private readonly Dictionary<Guid, LiveTvProgram> _programItems = new();
     private readonly Dictionary<Guid, string> _seededTitles = new();
+    private readonly Dictionary<Guid, LiveTvProgram> _laterItems = new();
     private readonly PluginConfiguration _config = new();
     private readonly Mock<IDispatcharrClient> _dispatcharr = new();
     private readonly Dictionary<string, string> _streamNames = new();
@@ -40,9 +41,12 @@ public class ChannelRenamerTests
             .Returns(() => _channels.Cast<BaseItem>().ToList());
         _library
             .Setup(l => l.GetItemList(It.Is<InternalItemsQuery>(q => q.IncludeItemTypes.Contains(BaseItemKind.LiveTvProgram))))
-            .Returns((InternalItemsQuery q) => GetProgram(q.ChannelIds.Single()) is { } p
-                ? new List<BaseItem> { p }
-                : new List<BaseItem>());
+            .Returns((InternalItemsQuery q) => new[] { GetProgram(q.ChannelIds.Single()), _laterItems.GetValueOrDefault(q.ChannelIds.Single()) }
+                .Where(p => p is not null
+                    && (q.MinEndDate is null || p.EndDate > q.MinEndDate)
+                    && (q.MaxStartDate is null || p.StartDate <= q.MaxStartDate))
+                .Cast<BaseItem>()
+                .ToList());
         _dispatcharr
             .Setup(d => d.GetStreamNamesByChannelNumberAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Regex>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _streamNames);
@@ -55,6 +59,11 @@ public class ChannelRenamerTests
                 {
                     _programs.Remove(key);
                     _programItems.Remove(key);
+                }
+
+                foreach (var key in _laterItems.Where(kv => kv.Value == item).Select(kv => kv.Key).ToList())
+                {
+                    _laterItems.Remove(key);
                 }
             });
         BaseItem.LibraryManager = _library.Object;
@@ -361,6 +370,98 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task AiringGame_DescriptionIsFullStreamName()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "CA - NHL GAME 03", number: "14");
+        GetProgram(channel.Id)!.Overview = "Early Bird Special - Coffee not included";
+        _streamNames["14"] = "CA - NHL GAME 03 : SAN JOSE SHARKS @ TORONTO MAPLE LEAFS OCT 19 – 7:30 PM ET / OCT 20 – 12:30 AM UK";
+
+        await RunAsync();
+
+        Assert.Equal(_streamNames["14"], _programItems[channel.Id].Overview);
+    }
+
+    [Fact]
+    public async Task GameChannel_LaterBlock_IsPlainUntaggedPlaceholder()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "CA - NHL GAME 03", number: "14");
+        var later = AddLaterProgram(channel, "CA - NHL GAME 03");
+        later.Overview = "Productivity Killer";
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+
+        await RunAsync();
+
+        Assert.Equal("SHARKS @ LEAFS", _programItems[channel.Id].Name);
+        Assert.True(_programItems[channel.Id].IsSports);
+        Assert.Equal("NHL GAME 03", later.Name);
+        Assert.False(later.IsSports);
+        Assert.False(later.IsLive);
+        Assert.Equal(string.Empty, later.Overview);
+    }
+
+    [Fact]
+    public async Task LaterBlock_TaggedByOlderVersion_GetsGameTagsStripped_OtherTagsKept()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 03", "CA - NHL GAME 03", number: "14");
+        var later = AddLaterProgram(channel, "SHARKS @ LEAFS");
+        later.Tags = new[] { "HD", "Live", "Sports" };
+        _streamNames["14"] = "CA - NHL GAME 03 : SHARKS @ LEAFS";
+
+        await RunAsync();
+
+        Assert.Equal(new[] { "HD" }, later.Tags);
+    }
+
+    [Fact]
+    public async Task NoGame_AiringRemoved_LaterBlockKeptPlain()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 07", "CA - NHL GAME 07", number: "10");
+        var later = AddLaterProgram(channel, "CA - NHL GAME 07 : WINNIPEG JETS @ CHICAGO BLACKHAWKS OCT 15");
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
+
+        await RunAsync();
+
+        Assert.Null(GetProgram(channel.Id));
+        Assert.Same(later, _laterItems[channel.Id]);
+        Assert.Equal("NHL GAME 07", later.Name);
+    }
+
+    [Fact]
+    public async Task GameAddedLater_NextBlockGetsTheGameOnceAiring()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        var channel = AddChannel("CA - NHL GAME 07", "CA - NHL GAME 07", number: "10");
+        var later = AddLaterProgram(channel, "CA - NHL GAME 07");
+        _streamNames["10"] = "CA - NHL GAME 07 : ";
+        await RunAsync();
+
+        // Provider adds tonight's game, and the later block starts airing.
+        _streamNames["10"] = "CA - NHL GAME 07 : JETS @ HAWKS";
+        later.StartDate = DateTime.UtcNow.AddMinutes(-5);
+        await RunAsync();
+
+        Assert.Equal("JETS @ HAWKS", later.Name);
+        Assert.True(later.IsSports);
+    }
+
+    [Theory]
+    [InlineData(-60, 60, true)]
+    [InlineData(0, 60, true)]
+    [InlineData(-60, 0, false)]
+    [InlineData(5, 60, false)]
+    public void IsAiring_StartInclusive_EndExclusive(int startOffsetMinutes, int endOffsetMinutes, bool expected)
+    {
+        var now = new DateTime(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc);
+        var program = new LiveTvProgram { StartDate = now.AddMinutes(startOffsetMinutes), EndDate = now.AddMinutes(endOffsetMinutes) };
+
+        Assert.Equal(expected, ChannelRenamer.IsAiring(program, now));
+    }
+
+    [Fact]
     public async Task Summary_IsLoggedEveryRun()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
@@ -499,11 +600,20 @@ public class ChannelRenamerTests
 
         if (!_programItems.TryGetValue(channelId, out var program) || _seededTitles[channelId] != title)
         {
-            program = new LiveTvProgram { Id = Guid.NewGuid(), Name = title };
+            // Airing now: started an hour ago, ends in two.
+            program = new LiveTvProgram { Id = Guid.NewGuid(), Name = title, StartDate = DateTime.UtcNow.AddHours(-1), EndDate = DateTime.UtcNow.AddHours(2) };
             _programItems[channelId] = program;
             _seededTitles[channelId] = title;
         }
 
+        return program;
+    }
+
+    // The next 4-hour placeholder block, starting after the airing one.
+    private LiveTvProgram AddLaterProgram(LiveTvChannel channel, string title)
+    {
+        var program = new LiveTvProgram { Id = Guid.NewGuid(), Name = title, StartDate = DateTime.UtcNow.AddHours(2), EndDate = DateTime.UtcNow.AddHours(6) };
+        _laterItems[channel.Id] = program;
         return program;
     }
 

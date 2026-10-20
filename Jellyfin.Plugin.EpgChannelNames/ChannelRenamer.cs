@@ -142,7 +142,8 @@ public class ChannelRenamer
             matched++;
             string? title;
             var dispatcharrListed = false;
-            if (channel.Number is not null && streamNames.TryGetValue(channel.Number, out var streamName))
+            string? streamName = null;
+            if (channel.Number is not null && streamNames.TryGetValue(channel.Number, out streamName))
             {
                 // Dispatcharr knows this channel: its stream name is authoritative. An empty game ("CA - NHL GAME 05 : ")
                 // means nothing tonight. Don't fall back to the EPG, which for these channels is Dispatcharr's own
@@ -178,19 +179,15 @@ public class ChannelRenamer
             var template = title is null ? config.NoProgramTemplate : config.NameTemplate;
             var newName = BuildName(template, title, original, channel.Number, match.Value);
 
-            if (dispatcharrListed && title is null && config.RemoveNoGamePrograms)
+            if (dispatcharrListed)
             {
-                // No game tonight: Dispatcharr's placeholders would only show a logo stream. Hide them.
-                // Jellyfin re-adds them on each guide refresh; this runs again right after.
-                programsRemoved += RemovePrograms(channel, now, config.ProgramWindowHours);
-            }
-            else if (dispatcharrListed && config.RenamePrograms)
-            {
-                // The guide/Programs page shows program titles, which for these channels are Dispatcharr's
-                // placeholder (often a days-old channel name). Make them say the same as the channel.
-                // Real games also get tags (default Live + Sports) so they rank in "On Now" and appear in the Sports row.
-                var tags = title is null ? Array.Empty<string>() : ParseTags(config.GameProgramTags);
-                programsRenamed += await RenameProgramsAsync(channel, title ?? newName, tags, now, config.ProgramWindowHours, cancellationToken).ConfigureAwait(false);
+                // Program titles are what the Programs page and guide show; for these channels they are
+                // Dispatcharr's 4-hour placeholders. Only the block airing now carries tonight's game.
+                var plainName = BuildName(config.NoProgramTemplate, null, original, channel.Number, match.Value);
+                var (programsChanged, programsDeleted) = await ApplyProgramsAsync(
+                    channel, config, title, streamName!, plainName, now, cancellationToken).ConfigureAwait(false);
+                programsRenamed += programsChanged;
+                programsRemoved += programsDeleted;
             }
 
             if (newName == channel.Name && applied == newName)
@@ -237,58 +234,80 @@ public class ChannelRenamer
     internal static string[] ParseTags(string? tags)
         => (tags ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private int RemovePrograms(LiveTvChannel channel, DateTime now, int windowHours)
+    /// <summary>
+    /// Returns whether <paramref name="program"/> is airing at <paramref name="now"/>.
+    /// </summary>
+    /// <param name="program">The program.</param>
+    /// <param name="now">Current UTC time.</param>
+    /// <returns>True when start &lt;= now &lt; end.</returns>
+    internal static bool IsAiring(LiveTvProgram program, DateTime now)
+        => program.StartDate <= now && (program.EndDate ?? DateTime.MaxValue) > now;
+
+    private async Task<(int Changed, int Deleted)> ApplyProgramsAsync(
+        LiveTvChannel channel,
+        PluginConfiguration config,
+        string? title,
+        string streamName,
+        string plainName,
+        DateTime now,
+        CancellationToken cancellationToken)
     {
-        var programs = GetProgramsInWindow(channel, now, windowHours);
-        foreach (var program in programs)
-        {
-            // Same options Jellyfin's GuideManager uses when it drops stale programs.
-            _libraryManager.DeleteItem(
-                program,
-                new DeleteOptions
-                {
-                    DeleteFileLocation = false,
-                    DeleteFromExternalProvider = false
-                },
-                false);
-        }
-
-        return programs.Count;
-    }
-
-    private IReadOnlyList<BaseItem> GetProgramsInWindow(LiveTvChannel channel, DateTime now, int windowHours)
-        => _libraryManager.GetItemList(new InternalItemsQuery
+        var gameTags = ParseTags(config.GameProgramTags);
+        var programs = _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.LiveTvProgram },
             ChannelIds = new[] { channel.Id },
             MinEndDate = now,
-            MaxStartDate = now.AddHours(Math.Max(0, windowHours))
-        });
+            MaxStartDate = now.AddHours(Math.Max(0, config.ProgramWindowHours))
+        }).OfType<LiveTvProgram>();
 
-    private async Task<int> RenameProgramsAsync(LiveTvChannel channel, string programName, string[] tags, DateTime now, int windowHours, CancellationToken cancellationToken)
-    {
-        var programs = GetProgramsInWindow(channel, now, windowHours);
-
-        var count = 0;
+        int changed = 0, deleted = 0;
         foreach (var program in programs)
         {
-            var missingTags = tags.Where(t => !program.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)).ToArray();
-            if (program.Name == programName && missingTags.Length == 0)
+            var airing = IsAiring(program, now);
+
+            if (airing && title is null && config.RemoveNoGamePrograms)
+            {
+                // No game: the placeholder only plays a logo. Same delete options Jellyfin's GuideManager uses.
+                _libraryManager.DeleteItem(
+                    program,
+                    new DeleteOptions
+                    {
+                        DeleteFileLocation = false,
+                        DeleteFromExternalProvider = false
+                    },
+                    false);
+                deleted++;
+                continue;
+            }
+
+            if (!config.RenamePrograms)
             {
                 continue;
             }
 
-            program.Name = programName;
-            if (missingTags.Length > 0)
+            // Airing game: title, tags and the full stream name as description. Everything else is a plain,
+            // untagged placeholder; the block gets the game (if any) once it starts airing.
+            var isGame = airing && title is not null;
+            var name = isGame ? title! : plainName;
+            var overview = isGame ? streamName : string.Empty;
+            var tags = isGame
+                ? program.Tags.Union(gameTags, StringComparer.OrdinalIgnoreCase).ToArray()
+                : program.Tags.Where(t => !gameTags.Contains(t, StringComparer.OrdinalIgnoreCase)).ToArray();
+
+            if (program.Name == name && (program.Overview ?? string.Empty) == overview && program.Tags.SequenceEqual(tags))
             {
-                program.Tags = program.Tags.Concat(missingTags).ToArray();
+                continue;
             }
 
+            program.Name = name;
+            program.Overview = overview;
+            program.Tags = tags;
             await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-            count++;
+            changed++;
         }
 
-        return count;
+        return (changed, deleted);
     }
 
     private async Task<IReadOnlyDictionary<string, string>> GetStreamNamesAsync(PluginConfiguration config, Regex filter, CancellationToken cancellationToken)

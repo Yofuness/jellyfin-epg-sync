@@ -38,12 +38,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public string StreamTitleRegex { get; set; } = @":\s*(?<title>[^/]+?)\s*(?:/.*)?$";
 
     /// <summary>
-    /// Gets or sets a value indicating whether guide programs are renamed to the Dispatcharr game title too.
+    /// Gets or sets a value indicating whether guide programs are updated: the airing block gets the Dispatcharr game, later blocks become plain placeholders.
     /// </summary>
     public bool RenamePrograms { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets a value indicating whether placeholder programs are removed from Dispatcharr game channels with no game.
+    /// Gets or sets a value indicating whether the airing placeholder program is removed from Dispatcharr game channels with no game.
     /// </summary>
     public bool RemoveNoGamePrograms { get; set; } = true;
 
@@ -53,7 +53,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public string GameProgramTags { get; set; } = "Live,Sports";
 
     /// <summary>
-    /// Gets or sets how many hours ahead programs are renamed.
+    /// Gets or sets how many hours ahead programs are checked.
     /// </summary>
     public int ProgramWindowHours { get; set; } = 12;
 

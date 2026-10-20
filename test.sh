@@ -43,14 +43,15 @@ http://127.0.0.1/none7.ts
 http://127.0.0.1/none2.ts
 M3U
 write_epg() {
-  local a b
-  a=$(date -u -d '-1 hour' +%Y%m%d%H%M%S); b=$(date -u -d '+2 hour' +%Y%m%d%H%M%S)
+  local a b c
+  a=$(date -u -d '-1 hour' +%Y%m%d%H%M%S); b=$(date -u -d '+2 hour' +%Y%m%d%H%M%S); c=$(date -u -d '+6 hour' +%Y%m%d%H%M%S)
   cat > "$WORK/tv/epg.xml" <<XML
 <?xml version="1.0"?><tv>
 <channel id="nhl01"><display-name>NHL GAME 01</display-name></channel>
 <channel id="nhl07"><display-name>NHL GAME 07</display-name></channel>
 <channel id="news"><display-name>CBC News</display-name></channel>
 <programme start="$a +0000" stop="$b +0000" channel="nhl01"><title>$1</title></programme>
+<programme start="$b +0000" stop="$c +0000" channel="nhl01"><title>Later placeholder</title><desc>Early Bird Special - Coffee not included</desc></programme>
 <programme start="$a +0000" stop="$b +0000" channel="nhl07"><title>NHL GAME 07</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="news"><title>The National</title></programme>
 </tv>
@@ -154,7 +155,7 @@ expect "CBC News"
 USER_ID=$(curl -sf "$J/Users" -H "$A" | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["Id"])')
 SPORTS=$(curl -sf "$J/LiveTv/Programs/Recommended?userId=$USER_ID&hasAired=false&isSports=true&limit=12&fields=ChannelInfo" -H "$A" \
   | python3 -c 'import json,sys;print("\n".join(i["Name"] for i in json.load(sys.stdin)["Items"]))')
-if grep -qxF "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET" <<<"$SPORTS"; then echo "PASS: game in Sports row"; else echo "FAIL: game not in Sports row, got: $SPORTS"; exit 1; fi
+if [[ "$(grep -cxF "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET" <<<"$SPORTS")" == 1 ]]; then echo "PASS: game in Sports row exactly once (airing block only)"; else echo "FAIL: expected the game once in Sports row, got: $SPORTS"; exit 1; fi
 
 # No-game channel: placeholder program removed, channel kept.
 expect "NHL GAME 07"
@@ -165,6 +166,17 @@ if [[ "$NOGAME_PROGS" == 0 ]]; then echo "PASS: no-game placeholder removed"; el
 GAME_ID=$(curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"].startswith("NHL GAME 01")))')
 GAME_PROGS=$(curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$GAME_ID" -H "$A" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["Items"]))')
 if [[ "$GAME_PROGS" -gt 0 ]]; then echo "PASS: game channel keeps its program"; else echo "FAIL: game channel has no programs"; exit 1; fi
+# Airing block: game title + full stream name as description. Later block: plain placeholder, no joke text.
+curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$GAME_ID&fields=Overview" -H "$A" | python3 -c '
+import json,sys
+items=sorted(json.load(sys.stdin)["Items"], key=lambda i: i["StartDate"])
+airing, later = items[0], items[1]
+assert airing["Name"] == "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET", airing["Name"]
+assert airing.get("Overview") == "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK", airing.get("Overview")
+assert later["Name"] == "NHL GAME 01", later["Name"]
+assert not later.get("Overview"), later.get("Overview")
+print("PASS: airing block has game + stream description; later block is plain")'
+
 
 # Dispatcharr down: keep the last known game (programs were renamed to it) instead of failing...
 docker stop "$FAKE" >/dev/null
