@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.EpgChannelNames;
 /// <summary>
 /// Renames event channels from Dispatcharr stream names and sorts programs into Programs-page rows.
 /// </summary>
-public class ChannelRenamer
+public partial class ChannelRenamer
 {
     // Stored in ProviderIds so they survive restarts. Jellyfin's guide refresh
     // resets Name to the tuner's name, so any Name != Applied is a fresh original.
@@ -113,6 +113,9 @@ public class ChannelRenamer
         var filter = string.IsNullOrWhiteSpace(config.ChannelNameRegex) ? null : new Regex(config.ChannelNameRegex, RegexOptions.IgnoreCase);
         var eventRegex = new Regex(config.EventRegex, RegexOptions.IgnoreCase);
         var rules = CategoryRules.Parse(config.GroupCategoryRules);
+        var ignoredTitles = (config.IgnoredProgramTitles ?? string.Empty)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var now = DateTime.UtcNow;
 
         foreach (var line in rules.InvalidLines)
@@ -183,7 +186,9 @@ public class ChannelRenamer
                 else
                 {
                     // Regular channel: keep its name and real EPG; only sort its programs into a Programs-page row.
-                    await ApplyCategoryAsync(channel, category, config.ProgramWindowHours, now, stats, cancellationToken).ConfigureAwait(false);
+                    // Placeholders (title = the channel's own name) and ignored titles never get a row.
+                    var names = new[] { original, d.Name, d.StreamName };
+                    await ApplyCategoryAsync(channel, category, names, ignoredTitles, config.ProgramWindowHours, now, stats, cancellationToken).ConfigureAwait(false);
                 }
             }
             else if (filterMatch is { Success: true })
@@ -216,7 +221,7 @@ public class ChannelRenamer
         progress.Report(100);
 
         _logger.LogInformation(
-            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized",
+            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized, {Placeholders} placeholders skipped",
             channels.Count,
             stats.Listed,
             stats.Events,
@@ -225,7 +230,8 @@ public class ChannelRenamer
             stats.Renamed,
             stats.ProgramsUpdated,
             stats.ProgramsRemoved,
-            stats.ProgramsCategorized);
+            stats.ProgramsCategorized,
+            stats.PlaceholdersSkipped);
         if (dispatcharr is not null && dispatcharr.Count == 0)
         {
             _logger.LogWarning("Dispatcharr returned no channels");
@@ -235,6 +241,31 @@ public class ChannelRenamer
         {
             _logger.LogWarning("Nothing to do: set a Dispatcharr URL, or 'Only channels matching' for EPG-only mode");
         }
+    }
+
+    /// <summary>
+    /// Returns whether a program is a placeholder rather than a real show: its title is the channel's own name
+    /// (ignoring quality tokens like HD/FHD/◉), or it is in <paramref name="ignoredTitles"/>.
+    /// Dispatcharr fills channels without a real guide with such placeholders.
+    /// </summary>
+    /// <param name="title">Program title.</param>
+    /// <param name="channelNames">Names the channel is known by (Jellyfin original, Dispatcharr channel, stream).</param>
+    /// <param name="ignoredTitles">Titles that are never real programs, e.g. "Channel No Longer Available".</param>
+    /// <returns>True for placeholders.</returns>
+    internal static bool IsPlaceholder(string? title, IEnumerable<string?> channelNames, IReadOnlyCollection<string> ignoredTitles)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return true;
+        }
+
+        if (ignoredTitles.Contains(title.Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var normalized = NormalizeTitle(title);
+        return channelNames.Any(n => !string.IsNullOrWhiteSpace(n) && NormalizeTitle(n) == normalized);
     }
 
     /// <summary>
@@ -324,7 +355,15 @@ public class ChannelRenamer
         }
     }
 
-    private async Task ApplyCategoryAsync(LiveTvChannel channel, ProgramCategory? category, int windowHours, DateTime now, RunStats stats, CancellationToken cancellationToken)
+    private async Task ApplyCategoryAsync(
+        LiveTvChannel channel,
+        ProgramCategory? category,
+        string?[] channelNames,
+        IReadOnlyCollection<string> ignoredTitles,
+        int windowHours,
+        DateTime now,
+        RunStats stats,
+        CancellationToken cancellationToken)
     {
         var programs = _libraryManager.GetItemList(new InternalItemsQuery
         {
@@ -336,7 +375,14 @@ public class ChannelRenamer
 
         foreach (var program in programs)
         {
-            if (!CategoryRules.Apply(program, category))
+            var placeholder = category is not null && IsPlaceholder(program.Name, channelNames, ignoredTitles);
+            if (placeholder)
+            {
+                stats.PlaceholdersSkipped++;
+            }
+
+            // Apply(null) also undoes tags an earlier version put on placeholders.
+            if (!CategoryRules.Apply(program, placeholder ? null : category))
             {
                 continue;
             }
@@ -366,6 +412,15 @@ public class ChannelRenamer
         }
     }
 
+    private static string NormalizeTitle(string text)
+        => SpaceRegex().Replace(QualityRegex().Replace(text, " "), " ").Trim().ToUpperInvariant();
+
+    [GeneratedRegex(@"\b(FHD|HD|SD|HEVC|UHD|4K)\b|[◉²]", RegexOptions.IgnoreCase)]
+    private static partial Regex QualityRegex();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex SpaceRegex();
+
     private sealed class RunStats
     {
         public int Listed { get; set; }
@@ -383,5 +438,7 @@ public class ChannelRenamer
         public int ProgramsRemoved { get; set; }
 
         public int ProgramsCategorized { get; set; }
+
+        public int PlaceholdersSkipped { get; set; }
     }
 }

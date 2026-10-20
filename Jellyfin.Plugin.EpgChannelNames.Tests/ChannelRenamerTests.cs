@@ -502,6 +502,54 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task Placeholder_OnRuledChannel_IsNotCategorized()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        _config.GroupCategoryRules = "AM | CA | DOCUMENTARY = Shows";
+        var channel = AddChannel("CA - STINGRAY NATURE HD", "CA - STINGRAY NATURE", number: "40");
+        _streamNames["40"] = "CA - STINGRAY NATURE HD";
+        _groups["40"] = "AM | CA | DOCUMENTARY";
+
+        await RunAsync();
+
+        Assert.False(_programItems[channel.Id].IsSeries);
+    }
+
+    [Fact]
+    public async Task Placeholder_TaggedByV200_IsUntagged()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        _config.GroupCategoryRules = "EU | UK | SKY SPORTS+ = Sports";
+        var channel = AddChannel("UK - SKY SPORTS+ 29 FHD", "UK - SKY SPORTS+ 29 FHD", number: "90");
+        _streamNames["90"] = "UK - SKY SPORTS+ 29 FHD";
+        _groups["90"] = "EU | UK | SKY SPORTS+";
+        var program = GetProgram(channel.Id)!;
+        CategoryRules.Apply(program, ProgramCategory.Sports); // what v2.0.0 did
+
+        await RunAsync();
+
+        Assert.False(program.IsSports);
+        Assert.False(program.ProviderIds.ContainsKey(CategoryRules.MarkerKey));
+    }
+
+    [Fact]
+    public async Task IgnoredTitle_IsNotCategorized()
+    {
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        _config.GroupCategoryRules = "AM | CA | DOCUMENTARY = Shows";
+        var channel = AddChannel("CA - DOCUMENTARY HD", "Channel No Longer Available", number: "41");
+        _streamNames["41"] = "CA - DOCUMENTARY HD";
+        _groups["41"] = "AM | CA | DOCUMENTARY";
+
+        await RunAsync();
+
+        Assert.False(_programItems[channel.Id].IsSeries);
+    }
+
+    [Fact]
     public async Task RuleRemoved_RegularChannelProgramIsRestored()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
@@ -592,7 +640,7 @@ public class ChannelRenamerTests
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(
-            "Checked 3 channels: 2 from Dispatcharr, 2 event channels (1 with an event now), 0 EPG-mode; 2 renamed; programs: 1 updated, 1 removed, 0 categorized",
+            "Checked 3 channels: 2 from Dispatcharr, 2 event channels (1 with an event now), 0 EPG-mode; 2 renamed; programs: 1 updated, 1 removed, 0 categorized, 0 placeholders skipped",
             logger.Messages);
         Assert.DoesNotContain(logger.Messages, m => m.StartsWith("No Live TV channels matched", StringComparison.Ordinal));
     }

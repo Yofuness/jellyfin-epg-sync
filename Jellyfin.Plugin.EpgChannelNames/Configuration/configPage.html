@@ -35,6 +35,11 @@
           <textarea is="emby-textarea" id="GroupCategoryRules" rows="6" style="width:100%;font-family:monospace"></textarea>
           <div class="fieldDescription">One per line: <code>Dispatcharr group = Shows|Movies|Sports|News|Kids</code>, e.g. <code>AM | CA | DOCUMENTARY = Shows</code>. Programs on those channels appear in that row. Removing a rule undoes it. Unknown groups are logged with the list of real ones.</div>
         </div>
+        <div class="inputContainer">
+          <label class="textareaLabel" for="IgnoredProgramTitles">Never categorize programs titled</label>
+          <textarea is="emby-textarea" id="IgnoredProgramTitles" rows="3" style="width:100%;font-family:monospace"></textarea>
+          <div class="fieldDescription">One per line. Placeholders (a program titled like its own channel) are always skipped.</div>
+        </div>
         <div class="checkboxContainer">
           <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Update event programs</span></label>
           <div class="fieldDescription">The program airing now gets the game title and the full stream name as description; later blocks become plain placeholders. Only for channels whose title comes from Dispatcharr.</div>
@@ -60,7 +65,7 @@
   <script type="text/javascript">
     (function () {
       var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
-      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'EventRegex', 'GroupCategoryRules', 'GameProgramTags', 'ProgramWindowHours', 'IntervalMinutes'];
+      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'EventRegex', 'GroupCategoryRules', 'IgnoredProgramTitles', 'GameProgramTags', 'ProgramWindowHours', 'IntervalMinutes'];
       var page = document.querySelector('#EpgChannelNamesConfigPage');
       page.addEventListener('pageshow', function () {
         Dashboard.showLoadingMsg();

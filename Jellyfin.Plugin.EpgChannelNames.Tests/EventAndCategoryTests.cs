@@ -144,6 +144,32 @@ public class EventAndCategoryTests
         Assert.True(program.IsSeries);
     }
 
+    // Real airing programs from the server: title vs channel.
+    [Theory]
+    [InlineData("UK - SKY SPORTS+ 29 FHD", "UK - SKY SPORTS+ 29 FHD", true)]
+    [InlineData("##### UK - SKY SPORTS TENNIS  ##### ", "##### UK - SKY SPORTS TENNIS  #####", true)]
+    [InlineData("CA - STINGRAY NATURE", "CA - STINGRAY NATURE HD", true)]
+    [InlineData("UK - SKY SPORTS+ 9 FHD ", "uk - sky sports+ 9", true)]
+    [InlineData("Channel No Longer Available", "CA - DOCUMENTARY HD", true)]
+    [InlineData("channel no longer available", "CA - DOCUMENTARY HD", true)]
+    [InlineData("", "CA - HISTORY HD", true)]
+    [InlineData("Live NHL Ice Hockey", "UK - PREMIER SPORTS 2 SD", false)]
+    [InlineData("Pawn Stars", "CA - HISTORY HD ◉", false)]
+    [InlineData("UK - SKY SPORTS+ 29 FHD", "UK - SKY SPORTS+ 2 FHD", false)]
+    public void IsPlaceholder_RealCases(string title, string channel, bool expected)
+    {
+        var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Channel No Longer Available" };
+
+        Assert.Equal(expected, ChannelRenamer.IsPlaceholder(title, new[] { channel, null }, ignored));
+    }
+
+    [Fact]
+    public void IsPlaceholder_MatchesAnyKnownName()
+    {
+        // Jellyfin name differs, but the Dispatcharr stream name equals the title.
+        Assert.True(ChannelRenamer.IsPlaceholder("UK - TT RACES 01 HD", new[] { "TT Races 1", "UK - TT RACES 01 HD" }, Array.Empty<string>()));
+    }
+
     [Theory]
     [InlineData(@"NHL GAME \d+", true)]
     [InlineData(@"^NHL GAME \d+", true)]

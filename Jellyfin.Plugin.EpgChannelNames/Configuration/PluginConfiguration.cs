@@ -44,6 +44,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public string GroupCategoryRules { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets program titles that are never categorized, one per line (case-insensitive).
+    /// </summary>
+    public string IgnoredProgramTitles { get; set; } = "Channel No Longer Available";
+
+    /// <summary>
     /// Gets or sets a value indicating whether guide programs on event channels are updated: the airing block gets the event, later blocks become plain placeholders.
     /// </summary>
     public bool RenamePrograms { get; set; } = true;

@@ -50,6 +50,8 @@ http://127.0.0.1/none7.ts
 http://127.0.0.1/none120.ts
 #EXTINF:-1 tvg-id="history" tvg-chno="30",CA - HISTORY HD
 http://127.0.0.1/none30.ts
+#EXTINF:-1 tvg-id="stingray" tvg-chno="31",CA - STINGRAY NATURE HD
+http://127.0.0.1/none31.ts
 #EXTINF:-1 tvg-id="news" tvg-chno="5",CBC News
 http://127.0.0.1/none2.ts
 M3U
@@ -62,12 +64,14 @@ write_epg() {
 <channel id="nhl07"><display-name>NHL GAME 07</display-name></channel>
 <channel id="tnt2"><display-name>UK - TNT SPORTS | EVENT 2 HD :</display-name></channel>
 <channel id="history"><display-name>CA - HISTORY HD</display-name></channel>
+<channel id="stingray"><display-name>CA - STINGRAY NATURE HD</display-name></channel>
 <channel id="news"><display-name>CBC News</display-name></channel>
 <programme start="$a +0000" stop="$b +0000" channel="nhl01"><title>$1</title></programme>
 <programme start="$b +0000" stop="$c +0000" channel="nhl01"><title>Later placeholder</title><desc>Early Bird Special - Coffee not included</desc></programme>
 <programme start="$a +0000" stop="$b +0000" channel="nhl07"><title>NHL GAME 07</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="tnt2"><title>UK - TNT SPORTS | EVENT 2 HD :</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="history"><title>Pawn Stars</title></programme>
+<programme start="$a +0000" stop="$b +0000" channel="stingray"><title>CA - STINGRAY NATURE</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="news"><title>The National</title></programme>
 </tv>
 XML
@@ -81,6 +85,7 @@ cat > "$WORK/fake/channels.json" <<'JSON'
  {"id": 44, "name": "CA - NHL GAME 07", "channel_number": 107.0, "channel_group_id": 1072, "streams": [9]},
  {"id": 45, "name": "UK - TNT SPORTS | EVENT 2 HD :", "channel_number": 120.0, "channel_group_id": 7, "streams": [10]},
  {"id": 46, "name": "CA - HISTORY HD", "channel_number": 30.0, "channel_group_id": 5, "streams": [11]},
+ {"id": 47, "name": "CA - STINGRAY NATURE HD", "channel_number": 31.0, "channel_group_id": 5, "streams": [12]},
  {"id": 43, "name": "CBC News", "channel_number": 5.0, "channel_group_id": null, "streams": [8]}]
 JSON
 printf '%s' '[{"id": 1072, "name": "AM | CA\u00a0|\u00a0NHL PPV"}, {"id": 5, "name": "AM | CA | DOCUMENTARY"}, {"id": 7, "name": "EU | UK | TNT SPORTS"}]' > "$WORK/fake/groups.json"
@@ -89,6 +94,7 @@ cat > "$WORK/fake/streams.json" <<'JSON'
  {"id": 9, "name": "CA - NHL GAME 07 : "},
  {"id": 10, "name": "UK - TNT SPORTS | EVENT 2 HD : Major League Baseball"},
  {"id": 11, "name": "CA - HISTORY HD"},
+ {"id": 12, "name": "CA - STINGRAY NATURE HD"},
  {"id": 8, "name": "CBC News"}]
 JSON
 docker network create "$NET" >/dev/null
@@ -192,6 +198,8 @@ expect "CBC News"
 expect_in_row Sports "hasAired=false&isSports=true" "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET" 1
 expect_in_row Sports "hasAired=false&isSports=true" "Major League Baseball" 1
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "Pawn Stars" 1
+# Placeholder (program titled like its own channel) on a ruled channel stays out of the row.
+expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "CA - STINGRAY NATURE" 0
 
 # No-event channel: airing placeholder removed, channel kept.
 expect "CA - NHL GAME 07"
