@@ -6,45 +6,41 @@
   <div data-role="content">
     <div class="content-primary">
       <form id="EpgChannelNamesConfigForm">
-        <div class="inputContainer">
-          <input is="emby-input" type="text" id="ChannelNameRegex" label="Only channels matching (optional regex)" />
-          <div class="fieldDescription">Empty = all channels. With Dispatcharr, event channels are detected automatically; use this only to limit them, e.g. <code>NHL GAME|TNT SPORTS</code>. Without Dispatcharr this is required and selects channels to rename from the EPG.</div>
-        </div>
-        <div class="inputContainer">
-          <input is="emby-input" type="text" id="NameTemplate" label="Name while a program is airing" />
-          <div class="fieldDescription">Tokens: {program}, {prefix} (regex match), {original}, {number}</div>
-        </div>
-        <div class="inputContainer">
-          <input is="emby-input" type="text" id="NoProgramTemplate" label="Name when nothing is airing" />
-        </div>
-        <h3>Dispatcharr (optional)</h3>
-        <div class="fieldDescription">When set, the game title is read from Dispatcharr's stream names, which carry tonight's matchup even when the EPG is empty. Falls back to the EPG.</div>
+        <h3>Dispatcharr</h3>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="DispatcharrUrl" label="Dispatcharr URL" placeholder="http://localhost:9191" />
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="password" id="DispatcharrApiKey" label="Dispatcharr API key" autocomplete="off" />
-          <div class="fieldDescription">Create one in Dispatcharr under your user's settings (API keys).</div>
+          <div class="fieldDescription">Create one in Dispatcharr for your user. Required: without Dispatcharr the plugin does nothing (unless an advanced EPG-only filter is set).</div>
         </div>
-        <div class="inputContainer">
-          <input is="emby-input" type="text" id="EventRegex" label="Event channel regex (on stream name)" />
-          <div class="fieldDescription">A stream matching this is an event channel. <code>prefix</code> = channel part, <code>title</code> = the event (empty = nothing on now). Default: <code>CA - NHL GAME 03 : SHARKS @ LEAFS …</code> → prefix <code>CA - NHL GAME 03</code>, title <code>SHARKS @ LEAFS …</code> (up to <code>/</code>).</div>
+        <h3>Features</h3>
+        <div class="checkboxContainer checkboxContainer-withDescription">
+          <label><input is="emby-checkbox" type="checkbox" id="UseTeamNames" /><span>Put team names in sports program titles</span></label>
+          <div class="fieldDescription">"Live NHL Ice Hockey" becomes "Live NHL: Flyers vs Avalanche" when the description names the teams. NHL, NFL, NBA, MLB, MLS, major UK/EU soccer and rugby, GAA. Team list from ESPN, refreshed monthly.</div>
         </div>
-        <div class="inputContainer">
-          <input is="emby-input" type="number" id="StaleEventHours" min="0" label="Ignore events that started more than this many hours ago" />
-          <div class="fieldDescription">Read from the title, e.g. <code>OCT 17 – 5:00 PM UK</code>. Providers often leave finished events in stream names. 0 = off. Titles without a date are never ignored.</div>
+        <div class="checkboxContainer checkboxContainer-withDescription">
+          <label><input is="emby-checkbox" type="checkbox" id="UseChannelLogo" /><span>Use the channel logo for programs without an image</span></label>
+          <div class="fieldDescription">Makes Programs-page cards recognizable. Real program images are never replaced.</div>
+        </div>
+        <div class="checkboxContainer checkboxContainer-withDescription">
+          <label><input is="emby-checkbox" type="checkbox" id="RemoveNoGamePrograms" /><span>Hide programs on event channels with nothing on</span></label>
+          <div class="fieldDescription">Removes the airing placeholder (which only plays a logo) so it doesn't show on the Programs page. Later blocks stay, so a game added later still gets a program. The channel itself stays.</div>
         </div>
         <h3>Programs page rows</h3>
-        <div class="fieldDescription">Jellyfin's Programs page shows rows (Shows, Movies, Sports, News, Kids). Each Dispatcharr group's programs go into one row.</div>
-        <div class="checkboxContainer checkboxContainer-withDescription">
-          <label><input is="emby-checkbox" type="checkbox" id="AutoGroupCategories" /><span>Pick rows automatically from group names</span></label>
-          <div class="fieldDescription">SPORTS, NHL, PPV… = Sports; NEWS = News; KIDS, CARTOON = Kids; MOVIES, CINEMA = Movies; DOCUMENTARY, ENTERTAINMENT… = Shows. Change any group below.</div>
-        </div>
+        <div class="fieldDescription">Jellyfin's Programs page shows rows (Shows, Movies, Sports, News, Kids). Each Dispatcharr group's programs go into one row, picked from the group name. Change any group below.</div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin:.5em 0">
           <strong>Dispatcharr groups</strong>
           <button is="emby-button" type="button" id="ReloadGroups" class="raised" style="margin:0"><span>Reload groups</span></button>
         </div>
         <div id="GroupTable" style="border:1px solid rgba(128,128,128,.35);border-radius:6px;overflow:hidden"></div>
+        <details style="margin:2em 0 1em">
+          <summary style="cursor:pointer;font-size:1.17em;font-weight:bold;padding:.5em 0">Advanced</summary>
+          <div class="fieldDescription" style="margin-bottom:1em">The defaults work for most setups.</div>
+        <div class="checkboxContainer checkboxContainer-withDescription">
+          <label><input is="emby-checkbox" type="checkbox" id="AutoGroupCategories" /><span>Pick rows automatically from group names</span></label>
+          <div class="fieldDescription">SPORTS, NHL, PPV… = Sports; NEWS = News; KIDS, CARTOON = Kids; MOVIES, CINEMA = Movies; DOCUMENTARY, ENTERTAINMENT… = Shows. Change any group below.</div>
+        </div>
         <div class="inputContainer" style="margin-top:1.5em">
           <label class="textareaLabel" for="GroupCategoryRules">Custom rules (groups not listed above)</label>
           <textarea is="emby-textarea" id="GroupCategoryRules" rows="3" style="width:100%;font-family:monospace"></textarea>
@@ -55,25 +51,32 @@
           <textarea is="emby-textarea" id="IgnoredProgramTitles" rows="3" style="width:100%;font-family:monospace"></textarea>
           <div class="fieldDescription">One per line. Placeholders (a program titled like its own channel) are always skipped.</div>
         </div>
-        <div class="checkboxContainer">
+        <div class="checkboxContainer checkboxContainer-withDescription">
           <label><input is="emby-checkbox" type="checkbox" id="RenamePrograms" /><span>Update event programs</span></label>
           <div class="fieldDescription">The program airing now gets the game title and the full stream name as description; later blocks become plain placeholders. Only for channels whose title comes from Dispatcharr.</div>
-        </div>
-        <div class="checkboxContainer">
-          <label><input is="emby-checkbox" type="checkbox" id="RemoveNoGamePrograms" /><span>Hide programs on event channels with nothing on</span></label>
-          <div class="fieldDescription">Removes the airing placeholder (which only plays a logo) so it doesn't show on the Programs page. Later blocks stay, so a game added later still gets a program. The channel itself stays.</div>
-        </div>
-        <div class="checkboxContainer">
-          <label><input is="emby-checkbox" type="checkbox" id="UseChannelLogo" /><span>Use the channel logo for programs without an image</span></label>
-          <div class="fieldDescription">Makes Programs-page cards recognizable. Real program images are never replaced.</div>
-        </div>
-        <div class="checkboxContainer checkboxContainer-withDescription">
-          <label><input is="emby-checkbox" type="checkbox" id="UseTeamNames" /><span>Put team names in sports program titles</span></label>
-          <div class="fieldDescription">"Live NHL Ice Hockey" with "Philadelphia Flyers v Colorado Avalanche" in its description becomes "Live NHL: Flyers vs Avalanche". Covers NHL, NFL, NBA, MLB, MLS, Premier League, Championship, LaLiga, Champions League, Premiership Rugby, URC, Champions Cup and GAA. The team list comes from ESPN and is refreshed monthly by the "Refresh sports team list" scheduled task. Turning this off restores the EPG titles.</div>
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="text" id="GameProgramTags" label="Tags for game programs" />
           <div class="fieldDescription">Comma-separated. <code>Live</code> ranks games higher in "On Now"; <code>Sports</code> puts them in the Programs page's Sports row. Leave empty for none.</div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="number" id="StaleEventHours" min="0" label="Ignore events that started more than this many hours ago" />
+          <div class="fieldDescription">Read from the title, e.g. <code>OCT 17 – 5:00 PM UK</code>. Providers often leave finished events in stream names. 0 = off. Titles without a date are never ignored.</div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="EventRegex" label="Event channel regex (on stream name)" />
+          <div class="fieldDescription">A stream matching this is an event channel. <code>prefix</code> = channel part, <code>title</code> = the event (empty = nothing on now). Default: <code>CA - NHL GAME 03 : SHARKS @ LEAFS …</code> → prefix <code>CA - NHL GAME 03</code>, title <code>SHARKS @ LEAFS …</code> (up to <code>/</code>).</div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="NameTemplate" label="Name while a program is airing" />
+          <div class="fieldDescription">Tokens: {program}, {prefix} (regex match), {original}, {number}</div>
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="NoProgramTemplate" label="Name when nothing is airing" />
+        </div>
+        <div class="inputContainer">
+          <input is="emby-input" type="text" id="ChannelNameRegex" label="Only channels matching (optional regex)" />
+          <div class="fieldDescription">Empty = all channels. With Dispatcharr, event channels are detected automatically; use this only to limit them, e.g. <code>NHL GAME|TNT SPORTS</code>. Without Dispatcharr this is required and selects channels to rename from the EPG.</div>
         </div>
         <div class="inputContainer">
           <input is="emby-input" type="number" id="ProgramWindowHours" min="1" label="Hours ahead to check programs" />
@@ -81,6 +84,7 @@
         <div class="inputContainer">
           <input is="emby-input" type="number" id="IntervalMinutes" min="1" label="Default refresh interval (minutes, applies on first install)" />
         </div>
+        </details>
         <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
       </form>
     </div>
