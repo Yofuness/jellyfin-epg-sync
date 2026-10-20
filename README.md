@@ -59,11 +59,7 @@ The plugin reads every Dispatcharr channel (3 requests) and matches Jellyfin cha
 
 **Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. The row is picked automatically from the group name (setting *Sort channels into Programs page rows automatically*). Only if a guess is wrong, add a rule, one per line; `None` keeps a group out of all rows:
 ```
-AM | CA | DOCUMENTARY = Shows
-AM | CA | NHL PPV = Sports
-EU | UK | TNT SPORTS = Sports
-EU | UK | SKY SPORTS+ = Sports
-EU | UK | SPORTS = Sports
+UK | SPORTS NEWS = Sports
 UK | MUSIC SHOWS = None
 ```
 Group names must match Dispatcharr (spaces don't matter; a typo is logged with the real group names). Removing a rule undoes it. Programs on regular channels keep their real titles; only the row changes.
