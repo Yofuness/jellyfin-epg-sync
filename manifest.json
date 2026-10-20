@@ -8,6 +8,14 @@
     "category": "LiveTV",
     "versions": [
       {
+        "version": "2.4.0.0",
+        "changelog": "Release 2.4.0.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v2.4.0/epg-channel-names_2.4.0.0.zip",
+        "checksum": "be2622043f46b0caca12c4a68abab20c",
+        "timestamp": "2026-10-20T14:55:07Z"
+      },
+      {
         "version": "2.3.0.0",
         "changelog": "Release 2.3.0.0",
         "targetAbi": "10.11.0.0",
