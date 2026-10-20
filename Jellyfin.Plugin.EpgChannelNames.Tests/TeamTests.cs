@@ -92,6 +92,20 @@ public sealed class TeamTests : IDisposable
     }
 
     [Fact]
+    public void IsRepeat_BackToBackSameTitleOnly()
+    {
+        var start = new DateTime(2026, 10, 20, 16, 0, 0, DateTimeKind.Utc);
+        LiveTvProgram Block(string name, int fromHour, int toHour)
+            => new() { Name = name, StartDate = start.AddHours(fromHour), EndDate = start.AddHours(toHour) };
+        var tennis = Block("Live Tennis", 0, 1);
+
+        Assert.False(ChannelRenamer.IsRepeat(null, tennis));
+        Assert.True(ChannelRenamer.IsRepeat(tennis, Block("Live Tennis", 1, 2)));
+        Assert.False(ChannelRenamer.IsRepeat(tennis, Block("Live Tennis", 3, 4))); // something else aired in between
+        Assert.False(ChannelRenamer.IsRepeat(tennis, Block("Formula 1", 1, 2)));
+    }
+
+    [Fact]
     public void BuildTitle_NoLeagueNamed_NeedsASportsProgram()
     {
         Assert.Null(TeamMatcher.BuildTitle("Match of the Day", "Arsenal v Chelsea", false, Teams));

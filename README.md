@@ -18,6 +18,7 @@ That's all. It runs after every guide refresh and every 15 minutes. To see it ri
 - **Cricket and F1**: "Test Cricket" becomes `Test Cricket: South Africa vs Australia · Day 3`; "Formula 1 Motor Racing" becomes `F1: United States GP 2018` (year shown only for replays, plus Qualifying / Sprint / Practice / Highlights when the description says so). Tennis guides carry no player names, so tennis titles stay as they are.
 - **Program images**: programs without an image use the channel logo.
 - **Programs page rows**: each channel's programs go into a row picked from its Dispatcharr group name (`… SPORTS` / `NHL PPV` = Sports, `DOCUMENTARY` = Shows, `NEWS` = News, `KIDS` = Kids, `MOVIES` / `CINEMA` = Movies). Groups that match nothing get no row.
+- **One card per show**: back-to-back blocks of the same show on one channel ("Live Tennis" at 4:00 and 5:00) get one Programs-page card; the later blocks stay in the Guide. Toggle: *One card per show on the Programs page*.
 - Placeholder programs (titled like their channel, or "Channel No Longer Available") are left alone.
 
 

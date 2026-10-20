@@ -253,7 +253,7 @@ public partial class ChannelRenamer
         progress.Report(100);
 
         _logger.LogInformation(
-            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now, {StaleEvents} stale ignored), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized, {Retitled} retitled with teams, {Placeholders} placeholders skipped",
+            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now, {StaleEvents} stale ignored), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized, {Retitled} retitled with teams, {Repeats} repeats hidden, {Placeholders} placeholders skipped",
             channels.Count,
             stats.Listed,
             stats.Events,
@@ -265,6 +265,7 @@ public partial class ChannelRenamer
             stats.ProgramsRemoved,
             stats.ProgramsCategorized,
             stats.ProgramsRetitled,
+            stats.RepeatsHidden,
             stats.PlaceholdersSkipped);
         if (dispatcharr is not null && dispatcharr.Count == 0)
         {
@@ -457,8 +458,9 @@ public partial class ChannelRenamer
             ChannelIds = new[] { channel.Id },
             MinEndDate = now,
             MaxStartDate = now.AddHours(Math.Max(0, config.ProgramWindowHours))
-        }).OfType<LiveTvProgram>();
+        }).OfType<LiveTvProgram>().OrderBy(p => p.StartDate).ToList();
 
+        LiveTvProgram? previous = null;
         foreach (var program in programs)
         {
             // Checked against the EPG title, not one the plugin set.
@@ -469,14 +471,25 @@ public partial class ChannelRenamer
                 stats.PlaceholdersSkipped++;
             }
 
-            // Apply(null) also undoes tags an earlier version put on placeholders.
-            var categoryChanged = CategoryRules.Apply(program, placeholder ? null : category);
+            // Sports-ness before this run's category change, so a hidden repeat still gets team names.
             var isSports = category == ProgramCategory.Sports || program.IsSports;
             var titleChanged = ApplyTeamTitle(program, placeholder ? null : teams, isSports);
             if (titleChanged)
             {
                 stats.ProgramsRetitled++;
             }
+
+            // A block continuing the same show ("Live Tennis" 16:00, then 17:00) would be a second card in the row.
+            var repeat = config.HideRepeatedPrograms && IsRepeat(previous, program);
+            if (repeat && category is not null && !placeholder)
+            {
+                stats.RepeatsHidden++;
+            }
+
+            previous = program;
+
+            // Apply(null) also undoes tags an earlier version put on placeholders and repeats.
+            var categoryChanged = CategoryRules.Apply(program, placeholder || repeat ? null : category);
 
             var logoChanged = config.UseChannelLogo && ApplyChannelLogo(program, channel);
             if (!categoryChanged && !logoChanged && !titleChanged)
@@ -489,6 +502,18 @@ public partial class ChannelRenamer
             stats.ProgramsCategorized++;
         }
     }
+
+    /// <summary>
+    /// Returns whether a program directly continues the previous one on the same channel with the same title.
+    /// </summary>
+    /// <param name="previous">The channel's previous program, or null.</param>
+    /// <param name="program">The program.</param>
+    /// <returns>True for back-to-back blocks of one show.</returns>
+    internal static bool IsRepeat(LiveTvProgram? previous, LiveTvProgram program)
+        => previous is not null
+            && string.Equals(previous.Name, program.Name, StringComparison.OrdinalIgnoreCase)
+            && previous.EndDate is { } end
+            && program.StartDate <= end.AddMinutes(1);
 
     /// <summary>
     /// Puts the two teams found in a program's title and description into its title, or restores the EPG title.
@@ -619,6 +644,8 @@ public partial class ChannelRenamer
         public int PlaceholdersSkipped { get; set; }
 
         public int ProgramsRetitled { get; set; }
+
+        public int RepeatsHidden { get; set; }
 
         public int StaleEvents { get; set; }
     }

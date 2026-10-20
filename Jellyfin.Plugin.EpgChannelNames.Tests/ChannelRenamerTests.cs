@@ -714,7 +714,7 @@ public class ChannelRenamerTests
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(
-            "Checked 3 channels: 2 from Dispatcharr, 2 event channels (1 with an event now, 0 stale ignored), 0 EPG-mode; 2 renamed; programs: 1 updated, 1 removed, 0 categorized, 0 retitled with teams, 0 placeholders skipped",
+            "Checked 3 channels: 2 from Dispatcharr, 2 event channels (1 with an event now, 0 stale ignored), 0 EPG-mode; 2 renamed; programs: 1 updated, 1 removed, 0 categorized, 0 retitled with teams, 0 repeats hidden, 0 placeholders skipped",
             logger.Messages);
         Assert.DoesNotContain(logger.Messages, m => m.StartsWith("No Live TV channels matched", StringComparison.Ordinal));
     }

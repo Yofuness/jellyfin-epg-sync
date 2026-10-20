@@ -84,6 +84,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool UseTeamNames { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether back-to-back blocks of the same show on one channel get only one Programs-page card.
+    /// </summary>
+    public bool HideRepeatedPrograms { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the ESPN site API base URL for the team database. Not on the config page; tests point it at a fake server.
     /// </summary>
     public string TeamDatabaseUrl { get; set; } = "https://site.api.espn.com/apis/site/v2/sports/";

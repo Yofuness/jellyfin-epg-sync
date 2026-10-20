@@ -80,6 +80,7 @@ write_epg() {
 <programme start="$a +0000" stop="$b +0000" channel="nhl07"><title>NHL GAME 07</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="tnt2"><title>UK - TNT SPORTS | EVENT 2 HD :</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="history"><title>Pawn Stars</title></programme>
+<programme start="$b +0000" stop="$c +0000" channel="history"><title>Pawn Stars</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="stingray"><title>CA - STINGRAY NATURE</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="gaatv4"><title>UK - GAATV 004</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="premier2"><title>Live NHL Ice Hockey</title><desc>Philadelphia Flyers v Colorado Avalanche</desc></programme>
@@ -234,6 +235,7 @@ expect "UK - GAATV 004"
 
 expect_in_row Sports "hasAired=false&isSports=true" "ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT" 1
 expect_in_row Sports "hasAired=false&isSports=true" "Major League Baseball" 1
+# Two back-to-back Pawn Stars blocks: one card.
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "Pawn Stars" 1
 # Programs without an image get their channel's logo, and Jellyfin actually serves it.
 HISTORY_ID=$(curl -sf "$J/LiveTv/Channels" -H "$A" | python3 -c 'import json,sys;print(next(c["Id"] for c in json.load(sys.stdin)["Items"] if c["Name"]=="CA - HISTORY HD"))')
