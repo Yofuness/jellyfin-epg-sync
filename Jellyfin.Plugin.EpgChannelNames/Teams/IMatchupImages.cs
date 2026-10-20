@@ -13,7 +13,8 @@ public interface IMatchupImages
     /// </summary>
     /// <param name="first">Team shown on the left.</param>
     /// <param name="second">Team shown on the right.</param>
+    /// <param name="leagueLogo">League logo URL shown on top, or null for none.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The image path, or null when a team has no logo or the image can't be made.</returns>
-    Task<string?> GetAsync(Team first, Team second, CancellationToken cancellationToken);
+    Task<string?> GetAsync(Team first, Team second, string? leagueLogo, CancellationToken cancellationToken);
 }

@@ -377,7 +377,7 @@ public partial class ChannelRenamer
             return null;
         }
 
-        var path = await _images.GetAsync(match.First, match.Second, cancellationToken).ConfigureAwait(false);
+        var path = await _images.GetAsync(match.First, match.Second, match.League.Logo, cancellationToken).ConfigureAwait(false);
         return path is null ? null : new ItemImageInfo
         {
             Path = path,

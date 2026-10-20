@@ -59,7 +59,7 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<string?> GetAsync(Team first, Team second, CancellationToken cancellationToken)
+    public async Task<string?> GetAsync(Team first, Team second, string? leagueLogo, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(first.Logo) || string.IsNullOrEmpty(second.Logo) || _skiaUnavailable)
         {
@@ -73,7 +73,7 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
             Directory.CreateDirectory(folder);
             CleanOnce(folder);
 
-            var path = Path.Combine(folder, Hash(first.Logo + "|" + second.Logo) + ".png");
+            var path = Path.Combine(folder, Hash(first.Logo + "|" + second.Logo + "|" + leagueLogo) + ".png");
             if (File.Exists(path))
             {
                 File.SetLastWriteTimeUtc(path, DateTime.UtcNow); // still in use
@@ -87,7 +87,9 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
                 return null;
             }
 
-            await File.WriteAllBytesAsync(path, Render(a, b), cancellationToken).ConfigureAwait(false);
+            // A missing league logo only leaves the top empty.
+            var league = string.IsNullOrEmpty(leagueLogo) ? null : await GetLogoAsync(leagueLogo, cancellationToken).ConfigureAwait(false);
+            await File.WriteAllBytesAsync(path, Render(a, b, league), cancellationToken).ConfigureAwait(false);
             return path;
         }
         catch (Exception ex) when (ex is DllNotFoundException or TypeInitializationException or EntryPointNotFoundException)
@@ -112,12 +114,13 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
     public void Dispose() => _lock.Dispose();
 
     /// <summary>
-    /// Draws two logos side by side with a divider between them on a dark 960x540 card.
+    /// Draws two logos side by side with a divider between them on a dark 960x540 card, and the league logo on top.
     /// </summary>
     /// <param name="first">Encoded image of the left logo.</param>
     /// <param name="second">Encoded image of the right logo.</param>
+    /// <param name="league">Encoded league logo, or null for none.</param>
     /// <returns>The card as PNG.</returns>
-    internal static byte[] Render(byte[] first, byte[] second)
+    internal static byte[] Render(byte[] first, byte[] second, byte[]? league = null)
     {
         using var surface = SKSurface.Create(new SKImageInfo(Width, Height, SKColorType.Rgba8888, SKAlphaType.Premul));
         var canvas = surface.Canvas;
@@ -131,8 +134,12 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
             canvas.DrawRect(0, 0, Width, Height, background);
         }
 
-        DrawLogo(canvas, first, Width * 0.25f);
-        DrawLogo(canvas, second, Width * 0.75f);
+        DrawLogo(canvas, first, Width * 0.25f, Height / 2f, 340);
+        DrawLogo(canvas, second, Width * 0.75f, Height / 2f, 340);
+        if (league is not null)
+        {
+            DrawLogo(canvas, league, Width / 2f, 82, 110);
+        }
 
         // A divider instead of "VS" text: servers often have no fonts installed.
         using (var line = new SKPaint { IsAntialias = true, StrokeWidth = 4 })
@@ -142,7 +149,7 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
                 new SKPoint(0, Height * 0.8f),
                 new[] { SKColors.Transparent, new SKColor(0xFF, 0xFF, 0xFF, 0x90), SKColors.Transparent },
                 SKShaderTileMode.Clamp);
-            canvas.DrawLine(Width / 2f, Height * 0.2f, Width / 2f, Height * 0.8f, line);
+            canvas.DrawLine(Width / 2f, Height * (league is null ? 0.2f : 0.34f), Width / 2f, Height * 0.8f, line);
         }
 
         using var image = surface.Snapshot();
@@ -150,8 +157,8 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
         return data.ToArray();
     }
 
-    // Fits a logo into a 340px square centered at (centerX, middle).
-    private static void DrawLogo(SKCanvas canvas, byte[] encoded, float centerX)
+    // Fits a logo into a box x box square centered at (centerX, centerY).
+    private static void DrawLogo(SKCanvas canvas, byte[] encoded, float centerX, float centerY, float box)
     {
         using var logo = SKImage.FromEncodedData(encoded);
         if (logo is null)
@@ -159,11 +166,10 @@ public sealed class MatchupImages : IMatchupImages, IDisposable
             return;
         }
 
-        const float Box = 340;
-        var scale = Math.Min(Box / logo.Width, Box / logo.Height);
+        var scale = Math.Min(box / logo.Width, box / logo.Height);
         var w = logo.Width * scale;
         var h = logo.Height * scale;
-        var rect = SKRect.Create(centerX - (w / 2), (Height - h) / 2, w, h);
+        var rect = SKRect.Create(centerX - (w / 2), centerY - (h / 2), w, h);
         canvas.DrawImage(logo, rect, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
     }
 

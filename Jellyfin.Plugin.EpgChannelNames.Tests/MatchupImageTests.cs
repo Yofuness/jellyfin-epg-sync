@@ -58,6 +58,24 @@ public sealed class MatchupImageTests : IDisposable
     }
 
     [Fact]
+    public void Render_LeagueLogoOnTop()
+    {
+        var png = MatchupImages.Render(Png(SKColors.Red), Png(SKColors.Blue), Png(SKColors.Yellow));
+
+        using var image = SKBitmap.Decode(png);
+        Assert.Equal(SKColors.Yellow, image.GetPixel(MatchupImages.Width / 2, 82));
+        Assert.Equal(SKColors.Red, image.GetPixel(MatchupImages.Width / 4, MatchupImages.Height / 2));
+    }
+
+    [Fact]
+    public void Leagues_WithEspnTeams_HaveLogosExceptRugby()
+    {
+        Assert.All(
+            League.All.Where(l => l.EspnPath is not null && !l.EspnPath.StartsWith("rugby", StringComparison.Ordinal)),
+            l => Assert.StartsWith("https://a.espncdn.com/i/", l.Logo, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task GetAsync_DownloadsLogosOnceAndCachesTheCard()
     {
         var handler = new LogoHandler();
@@ -65,13 +83,13 @@ public sealed class MatchupImageTests : IDisposable
         var a = new Team("nhl", "Ducks", Array.Empty<string>(), Array.Empty<string>(), "http://espn.test/ana.png");
         var b = new Team("nhl", "Rangers", Array.Empty<string>(), Array.Empty<string>(), "http://espn.test/nyr.png");
 
-        var first = await images.GetAsync(a, b, CancellationToken.None);
-        var second = await images.GetAsync(a, b, CancellationToken.None);
+        var first = await images.GetAsync(a, b, "http://espn.test/nhl.png", CancellationToken.None);
+        var second = await images.GetAsync(a, b, "http://espn.test/nhl.png", CancellationToken.None);
 
         Assert.NotNull(first);
         Assert.Equal(first, second);
         Assert.True(File.Exists(first));
-        Assert.Equal(2, handler.Requests);
+        Assert.Equal(3, handler.Requests); // two teams + league
     }
 
     [Fact]
@@ -80,7 +98,7 @@ public sealed class MatchupImageTests : IDisposable
         using var images = Create(new LogoHandler());
         var gaa = League.BuiltInTeams.First();
 
-        Assert.Null(await images.GetAsync(gaa, gaa, CancellationToken.None));
+        Assert.Null(await images.GetAsync(gaa, gaa, null, CancellationToken.None));
     }
 
     [Fact]
