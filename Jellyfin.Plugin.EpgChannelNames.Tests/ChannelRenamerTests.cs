@@ -56,6 +56,10 @@ public class ChannelRenamerTests
 
         // EPG-mode tests below rely on the v1 NHL filter; Dispatcharr tests are unaffected by it for NHL names.
         _config.ChannelNameRegex = @"NHL GAME \d+";
+
+        // Many tests use real titles with fixed dates ("OCT 19 – 7:00 PM ET"); the stale check would turn them into
+        // "nothing on" once that date passes. The stale tests enable it explicitly with relative dates.
+        _config.StaleEventHours = 0;
         // Deleting a program makes it disappear from later queries, like the real library.
         _library
             .Setup(l => l.DeleteItem(It.IsAny<BaseItem>(), It.IsAny<DeleteOptions>(), It.IsAny<bool>()))
@@ -626,6 +630,38 @@ public class ChannelRenamerTests
     }
 
     [Fact]
+    public async Task StaleEvent_IsTreatedAsNothingOn()
+    {
+        _config.StaleEventHours = 6;
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        var stale = DateTime.UtcNow.AddDays(-2).ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant();
+        var channel = AddChannel("UK - GAATV 004", "placeholder", number: "192");
+        _streamNames["192"] = $"UK - GAATV 004 : DOWN @ CLONDUFF {stale} – 5:30 PM UK / 12:30 PM ET";
+
+        await RunAsync();
+
+        Assert.Equal("UK - GAATV 004", channel.Name);
+        Assert.Null(GetProgram(channel.Id)); // airing placeholder hidden, like any empty event slot
+    }
+
+    [Fact]
+    public async Task FreshEvent_IsKept()
+    {
+        _config.StaleEventHours = 6;
+        _config.DispatcharrUrl = "http://dispatcharr:9191";
+        _config.ChannelNameRegex = string.Empty;
+        var start = DateTime.UtcNow.AddHours(-1);
+        var when = start.ToString("MMM d – h:mm tt", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant();
+        var channel = AddChannel("UK - GAATV 004", "placeholder", number: "192");
+        _streamNames["192"] = $"UK - GAATV 004 : DOWN @ CLONDUFF {when} UK";
+
+        await RunAsync();
+
+        Assert.Equal($"UK - GAATV 004 · DOWN @ CLONDUFF {when} UK", channel.Name);
+    }
+
+    [Fact]
     public async Task Summary_IsLoggedEveryRun()
     {
         _config.DispatcharrUrl = "http://dispatcharr:9191";
@@ -640,7 +676,7 @@ public class ChannelRenamerTests
             .RunAsync(new SyncProgress(new List<double>()), CancellationToken.None);
 
         Assert.Contains(
-            "Checked 3 channels: 2 from Dispatcharr, 2 event channels (1 with an event now), 0 EPG-mode; 2 renamed; programs: 1 updated, 1 removed, 0 categorized, 0 placeholders skipped",
+            "Checked 3 channels: 2 from Dispatcharr, 2 event channels (1 with an event now, 0 stale ignored), 0 EPG-mode; 2 renamed; programs: 1 updated, 1 removed, 0 categorized, 0 placeholders skipped",
             logger.Messages);
         Assert.DoesNotContain(logger.Messages, m => m.StartsWith("No Live TV channels matched", StringComparison.Ordinal));
     }

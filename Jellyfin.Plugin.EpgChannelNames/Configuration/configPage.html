@@ -31,6 +31,10 @@
           <div class="fieldDescription">A stream matching this is an event channel. <code>prefix</code> = channel part, <code>title</code> = the event (empty = nothing on now). Default: <code>CA - NHL GAME 03 : SHARKS @ LEAFS …</code> → prefix <code>CA - NHL GAME 03</code>, title <code>SHARKS @ LEAFS …</code> (up to <code>/</code>).</div>
         </div>
         <div class="inputContainer">
+          <input is="emby-input" type="number" id="StaleEventHours" min="0" label="Ignore events that started more than this many hours ago" />
+          <div class="fieldDescription">Read from the title, e.g. <code>OCT 17 – 5:00 PM UK</code>. Providers often leave finished events in stream names. 0 = off. Titles without a date are never ignored.</div>
+        </div>
+        <div class="inputContainer">
           <label class="textareaLabel" for="GroupCategoryRules">Programs page rows by Dispatcharr group</label>
           <textarea is="emby-textarea" id="GroupCategoryRules" rows="6" style="width:100%;font-family:monospace"></textarea>
           <div class="fieldDescription">One per line: <code>Dispatcharr group = Shows|Movies|Sports|News|Kids</code>, e.g. <code>AM | CA | DOCUMENTARY = Shows</code>. Programs on those channels appear in that row. Removing a rule undoes it. Unknown groups are logged with the list of real ones.</div>
@@ -65,7 +69,7 @@
   <script type="text/javascript">
     (function () {
       var pluginId = '4f1c7a3e-6b2d-4e8a-9c51-0d7e2a9b3f64';
-      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'EventRegex', 'GroupCategoryRules', 'IgnoredProgramTitles', 'GameProgramTags', 'ProgramWindowHours', 'IntervalMinutes'];
+      var fields = ['ChannelNameRegex', 'NameTemplate', 'NoProgramTemplate', 'DispatcharrUrl', 'DispatcharrApiKey', 'EventRegex', 'GroupCategoryRules', 'IgnoredProgramTitles', 'GameProgramTags', 'ProgramWindowHours', 'StaleEventHours', 'IntervalMinutes'];
       var page = document.querySelector('#EpgChannelNamesConfigPage');
       page.addEventListener('pageshow', function () {
         Dashboard.showLoadingMsg();
@@ -83,6 +87,7 @@
           fields.forEach(function (f) { config[f] = page.querySelector('#' + f).value; });
           config.IntervalMinutes = parseInt(config.IntervalMinutes, 10) || 15;
           config.ProgramWindowHours = parseInt(config.ProgramWindowHours, 10) || 12;
+          config.StaleEventHours = Math.max(0, parseInt(config.StaleEventHours, 10) || 0);
           config.RenamePrograms = page.querySelector('#RenamePrograms').checked;
           config.RemoveNoGamePrograms = page.querySelector('#RemoveNoGamePrograms').checked;
           ApiClient.updatePluginConfiguration(pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);

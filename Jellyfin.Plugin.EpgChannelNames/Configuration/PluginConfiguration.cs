@@ -39,6 +39,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public string EventRegex { get; set; } = @"^(?<prefix>.+?)\s*:\s*(?<title>[^/]*?)\s*(?:/.*)?$";
 
     /// <summary>
+    /// Gets or sets after how many hours past its start time (read from the title, e.g. "OCT 17 – 5:00 PM UK") an event counts as over. 0 disables.
+    /// </summary>
+    public int StaleEventHours { get; set; } = 6;
+
+    /// <summary>
     /// Gets or sets category rules, one per line: "Dispatcharr group = Shows|Movies|Sports|News|Kids".
     /// </summary>
     public string GroupCategoryRules { get; set; } = string.Empty;

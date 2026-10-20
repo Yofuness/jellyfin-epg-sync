@@ -37,6 +37,7 @@ The plugin reads every Dispatcharr channel (3 requests) and matches Jellyfin cha
 - The channel is renamed to `{prefix} · {program}`, e.g. `CA - NHL GAME 01 · DUCKS @ RANGERS OCT 19 – 7:00 PM ET`, or just the prefix when nothing is on.
 - The program airing now gets the event title, the full stream name as description, `Live` + `Sports` tags (or the group's category), so it tops "On Now" and shows in its row.
 - Later guide blocks stay plain until they start airing. With nothing on, the airing placeholder is hidden; the channel stays.
+- Finished events that the provider leaves in stream names are ignored: if the title has a start time (`OCT 17 – 5:30 PM UK`) more than 6 hours ago (setting), the channel counts as nothing on.
 
 **Programs page rows by group**: Jellyfin sorts programs into rows (Shows, Movies, Sports, News, Kids) by category, and most provider EPGs have none. Map Dispatcharr groups to rows, one per line:
 ```

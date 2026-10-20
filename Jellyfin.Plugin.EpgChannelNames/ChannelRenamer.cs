@@ -171,6 +171,13 @@ public partial class ChannelRenamer
                 var category = rules.For(d.Group);
                 if (ParseEvent(d.StreamName, eventRegex) is { } ev)
                 {
+                    // Providers leave finished events in stream names for days; past ones count as "nothing on".
+                    if (ev.Title is not null && EventTime.IsStale(ev.Title, now, config.StaleEventHours))
+                    {
+                        stats.StaleEvents++;
+                        ev = (ev.Prefix, null);
+                    }
+
                     // Event channel: the stream name is authoritative. No title = nothing on now; the EPG for these
                     // channels is Dispatcharr's placeholder repeating the channel name, so it's never used.
                     stats.Events++;
@@ -221,11 +228,12 @@ public partial class ChannelRenamer
         progress.Report(100);
 
         _logger.LogInformation(
-            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized, {Placeholders} placeholders skipped",
+            "Checked {Total} channels: {Listed} from Dispatcharr, {Events} event channels ({LiveEvents} with an event now, {StaleEvents} stale ignored), {EpgMatched} EPG-mode; {Renamed} renamed; programs: {Updated} updated, {Removed} removed, {Categorized} categorized, {Placeholders} placeholders skipped",
             channels.Count,
             stats.Listed,
             stats.Events,
             stats.LiveEvents,
+            stats.StaleEvents,
             stats.EpgMatched,
             stats.Renamed,
             stats.ProgramsUpdated,
@@ -440,5 +448,7 @@ public partial class ChannelRenamer
         public int ProgramsCategorized { get; set; }
 
         public int PlaceholdersSkipped { get; set; }
+
+        public int StaleEvents { get; set; }
     }
 }

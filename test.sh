@@ -52,6 +52,8 @@ http://127.0.0.1/none120.ts
 http://127.0.0.1/none30.ts
 #EXTINF:-1 tvg-id="stingray" tvg-chno="31",CA - STINGRAY NATURE HD
 http://127.0.0.1/none31.ts
+#EXTINF:-1 tvg-id="gaatv4" tvg-chno="192",UK - GAATV 004
+http://127.0.0.1/none192.ts
 #EXTINF:-1 tvg-id="news" tvg-chno="5",CBC News
 http://127.0.0.1/none2.ts
 M3U
@@ -65,6 +67,7 @@ write_epg() {
 <channel id="tnt2"><display-name>UK - TNT SPORTS | EVENT 2 HD :</display-name></channel>
 <channel id="history"><display-name>CA - HISTORY HD</display-name></channel>
 <channel id="stingray"><display-name>CA - STINGRAY NATURE HD</display-name></channel>
+<channel id="gaatv4"><display-name>UK - GAATV 004</display-name></channel>
 <channel id="news"><display-name>CBC News</display-name></channel>
 <programme start="$a +0000" stop="$b +0000" channel="nhl01"><title>$1</title></programme>
 <programme start="$b +0000" stop="$c +0000" channel="nhl01"><title>Later placeholder</title><desc>Early Bird Special - Coffee not included</desc></programme>
@@ -72,6 +75,7 @@ write_epg() {
 <programme start="$a +0000" stop="$b +0000" channel="tnt2"><title>UK - TNT SPORTS | EVENT 2 HD :</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="history"><title>Pawn Stars</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="stingray"><title>CA - STINGRAY NATURE</title></programme>
+<programme start="$a +0000" stop="$b +0000" channel="gaatv4"><title>UK - GAATV 004</title></programme>
 <programme start="$a +0000" stop="$b +0000" channel="news"><title>The National</title></programme>
 </tv>
 XML
@@ -86,17 +90,21 @@ cat > "$WORK/fake/channels.json" <<'JSON'
  {"id": 45, "name": "UK - TNT SPORTS | EVENT 2 HD :", "channel_number": 120.0, "channel_group_id": 7, "streams": [10]},
  {"id": 46, "name": "CA - HISTORY HD", "channel_number": 30.0, "channel_group_id": 5, "streams": [11]},
  {"id": 47, "name": "CA - STINGRAY NATURE HD", "channel_number": 31.0, "channel_group_id": 5, "streams": [12]},
+ {"id": 48, "name": "UK - GAATV 004", "channel_number": 192.0, "channel_group_id": null, "streams": [13]},
  {"id": 43, "name": "CBC News", "channel_number": 5.0, "channel_group_id": null, "streams": [8]}]
 JSON
 printf '%s' '[{"id": 1072, "name": "AM | CA\u00a0|\u00a0NHL PPV"}, {"id": 5, "name": "AM | CA | DOCUMENTARY"}, {"id": 7, "name": "EU | UK | TNT SPORTS"}]' > "$WORK/fake/groups.json"
 cat > "$WORK/fake/streams.json" <<'JSON'
-[{"id": 7, "name": "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK"},
+[{"id": 7, "name": "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT / UK FEED"},
  {"id": 9, "name": "CA - NHL GAME 07 : "},
  {"id": 10, "name": "UK - TNT SPORTS | EVENT 2 HD : Major League Baseball"},
  {"id": 11, "name": "CA - HISTORY HD"},
  {"id": 12, "name": "CA - STINGRAY NATURE HD"},
+ {"id": 13, "name": "UK - GAATV 004 : DOWN @ CLONDUFF STALE_DATE – 5:30 PM UK / 12:30 PM ET"},
  {"id": 8, "name": "CBC News"}]
 JSON
+# A provider-style stale event, two days old.
+sed -i "s/STALE_DATE/$(date -u -d '-2 days' '+%b %-d' | tr a-z A-Z)/" "$WORK/fake/streams.json"
 docker network create "$NET" >/dev/null
 docker run -d --name "$FAKE" --network "$NET" --network-alias dispatcharr \
   -v "$WORK/fake":/data:ro -v "$ROOT/scripts":/scripts:ro python:3.12-alpine \
@@ -190,12 +198,14 @@ expect_in_row() { # $1 = label, $2 = query, $3 = program name, $4 = expected cou
 
 set_dispatcharr "http://dispatcharr:8000"
 rename_and_wait
-expect "CA - NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET"
+expect "CA - NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT"
 expect "UK - TNT SPORTS | EVENT 2 HD · Major League Baseball"
 expect "CA - HISTORY HD"
 expect "CBC News"
+# Stale event (2 days old in the stream name): treated as nothing on.
+expect "UK - GAATV 004"
 
-expect_in_row Sports "hasAired=false&isSports=true" "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET" 1
+expect_in_row Sports "hasAired=false&isSports=true" "ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT" 1
 expect_in_row Sports "hasAired=false&isSports=true" "Major League Baseball" 1
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "Pawn Stars" 1
 # Placeholder (program titled like its own channel) on a ruled channel stays out of the row.
@@ -214,8 +224,8 @@ curl -sf "$J/LiveTv/Programs?userId=$USER_ID&channelIds=$GAME_ID&fields=Overview
 import json,sys
 items=sorted(json.load(sys.stdin)["Items"], key=lambda i: i["StartDate"])
 airing, later = items[0], items[1]
-assert airing["Name"] == "ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET", airing["Name"]
-assert airing.get("Overview") == "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET / OCT 20 – 12:00 AM UK", airing.get("Overview")
+assert airing["Name"] == "ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT", airing["Name"]
+assert airing.get("Overview") == "CA - NHL GAME 01 : ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT / UK FEED", airing.get("Overview")
 assert later["Name"] == "CA - NHL GAME 01", later["Name"]
 assert not later.get("Overview"), later.get("Overview")
 print("PASS: airing block has event + stream description; later block is plain")'
@@ -230,7 +240,7 @@ expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&is
 # Dispatcharr down: channels keep their last names instead of failing...
 docker stop "$FAKE" >/dev/null
 rename_and_wait
-expect "CA - NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS OCT 19 – 7:00 PM ET"
+expect "CA - NHL GAME 01 · ANAHEIM DUCKS @ NEW YORK RANGERS TONIGHT"
 # ...until a guide refresh resets them to the tuner names (no filter set, so no EPG-mode fallback).
 docker exec "$NAME" sh -c 'rm -rf /cache/xmltv/*'
 refresh_and_wait
