@@ -68,11 +68,11 @@ public sealed class MatchupImageTests : IDisposable
     }
 
     [Fact]
-    public void Leagues_WithEspnTeams_HaveLogosExceptRugby()
+    public void Leagues_HaveLogosExceptGaa()
     {
         Assert.All(
-            League.All.Where(l => l.EspnPath is not null && !l.EspnPath.StartsWith("rugby", StringComparison.Ordinal)),
-            l => Assert.StartsWith("https://a.espncdn.com/i/", l.Logo, StringComparison.Ordinal));
+            League.All.Where(l => l.Key != "gaa"),
+            l => Assert.StartsWith("https://a.espncdn.com/", l.Logo, StringComparison.Ordinal));
     }
 
     [Fact]

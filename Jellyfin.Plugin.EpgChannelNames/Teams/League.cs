@@ -19,7 +19,7 @@ public sealed record League(string Key, string Label, string? EspnPath, IReadOnl
     /// Gets all leagues. Domestic leagues come first: when the same two teams play in several leagues and the text names
     /// none of them, the first one wins.
     /// </summary>
-    /// <remarks>Logos are from sports.core.api.espn.com/v2/sports/{sport}/leagues/{league}; ESPN has none for the rugby leagues.</remarks>
+    /// <remarks>Logos are from sports.core.api.espn.com/v2/sports/{sport}/leagues/{league}; rugby and cricket use ESPN's sport icons (no league logo).</remarks>
     public static IReadOnlyList<League> All { get; } = new[]
     {
         new League("nhl", "NHL Hockey", "hockey/nhl", new[] { "NHL", "Ice Hockey" }, ShortNicknames: true, Logo: "https://a.espncdn.com/i/teamlogos/leagues/500-dark/nhl.png"),
@@ -32,13 +32,13 @@ public sealed record League(string Key, string Label, string? EspnPath, IReadOnl
         new League("efl", "Championship Soccer", "soccer/eng.2", new[] { "EFL", "Championship" }, Logo: "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/24.png"),
         new League("laliga", "LaLiga Soccer", "soccer/esp.1", new[] { "LaLiga", "La Liga" }, Logo: "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/15.png"),
         new League("ucl", "Champions League Soccer", "soccer/uefa.champions", new[] { "Champions League", "UCL" }, Logo: "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2.png"),
-        new League("prem-rugby", "Premiership Rugby", "rugby/267979", new[] { "Premiership Rugby", "Prem Rugby", "Gallagher" }),
-        new League("urc", "URC Rugby", "rugby/270557", new[] { "URC", "United Rugby Championship" }),
-        new League("champions-cup", "Champions Cup Rugby", "rugby/271937", new[] { "Champions Cup" }),
+        new League("prem-rugby", "Premiership Rugby", "rugby/267979", new[] { "Premiership Rugby", "Prem Rugby", "Gallagher" }, Logo: "https://a.espncdn.com/combiner/i?img=/redesign/assets/img/icons/ESPN-icon-rugby.png&w=500&h=500&transparent=true"),
+        new League("urc", "URC Rugby", "rugby/270557", new[] { "URC", "United Rugby Championship" }, Logo: "https://a.espncdn.com/combiner/i?img=/redesign/assets/img/icons/ESPN-icon-rugby.png&w=500&h=500&transparent=true"),
+        new League("champions-cup", "Champions Cup Rugby", "rugby/271937", new[] { "Champions Cup" }, Logo: "https://a.espncdn.com/combiner/i?img=/redesign/assets/img/icons/ESPN-icon-rugby.png&w=500&h=500&transparent=true"),
         new League("gaa", "GAA", null, new[] { "GAA", "Hurling", "Gaelic", "Camogie", "All-Ireland" }, KeywordRequired: true),
 
         // National teams; country names appear in football and rugby too, so "Cricket" must be in the text.
-        new League("cricket", "Cricket", null, new[] { "Cricket" }, KeywordRequired: true),
+        new League("cricket", "Cricket", null, new[] { "Cricket" }, KeywordRequired: true, Logo: "https://a.espncdn.com/combiner/i?img=/redesign/assets/img/icons/ESPN-icon-cricket.png&w=500&h=500&transparent=true"),
     };
 
     /// <summary>
