@@ -42,7 +42,7 @@ public sealed record League(string Key, string Label, string? EspnPath, IReadOnl
     };
 
     /// <summary>
-    /// Gets the teams of the leagues ESPN doesn't cover: GAA counties and cricket nations. They don't change.
+    /// Gets the teams that aren't downloaded: GAA counties (no logos) and cricket nations (ESPN logos). They don't change.
     /// </summary>
     public static IReadOnlyList<Team> BuiltInTeams { get; } = new[]
     {
@@ -51,11 +51,17 @@ public sealed record League(string Key, string Label, string? EspnPath, IReadOnl
         "Meath", "Monaghan", "Offaly", "Roscommon", "Sligo", "Tipperary", "Tyrone", "Waterford", "Westmeath",
         "Wexford", "Wicklow"
     }.Select(c => new Team("gaa", c, new[] { c }, System.Array.Empty<string>(), null))
-    .Concat(new[]
+    .Concat(new (string Name, int? EspnId)[]
     {
-        "England", "Australia", "India", "South Africa", "New Zealand", "Pakistan", "Sri Lanka", "West Indies",
-        "Bangladesh", "Zimbabwe", "Afghanistan", "Ireland", "Scotland", "Netherlands", "Nepal", "UAE", "USA",
-        "Oman", "Namibia"
-    }.Select(c => new Team("cricket", c, new[] { c }, System.Array.Empty<string>(), null)))
+        // ESPN cricket team ids (flags, or the board crest for West Indies and Ireland). ESPN has no Nepal logo.
+        ("England", 1), ("Australia", 2), ("South Africa", 3), ("West Indies", 4), ("New Zealand", 5), ("India", 6),
+        ("Pakistan", 7), ("Sri Lanka", 8), ("Zimbabwe", 9), ("USA", 11), ("Netherlands", 15), ("Bangladesh", 25),
+        ("UAE", 27), ("Namibia", 28), ("Ireland", 29), ("Scotland", 30), ("Oman", 37), ("Afghanistan", 40), ("Nepal", null)
+    }.Select(c => new Team(
+        "cricket",
+        c.Name,
+        new[] { c.Name },
+        System.Array.Empty<string>(),
+        c.EspnId is { } id ? "https://a.espncdn.com/i/teamlogos/cricket/500/" + id.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png" : null)))
     .ToArray();
 }

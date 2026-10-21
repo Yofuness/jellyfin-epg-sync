@@ -76,6 +76,15 @@ public sealed class MatchupImageTests : IDisposable
     }
 
     [Fact]
+    public void CricketNations_HaveLogos()
+    {
+        var cricket = League.BuiltInTeams.Where(t => t.League == "cricket" && t.ShortName != "Nepal").ToList();
+
+        Assert.NotEmpty(cricket);
+        Assert.All(cricket, t => Assert.StartsWith("https://a.espncdn.com/i/teamlogos/cricket/500/", t.Logo, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task GetAsync_DownloadsLogosOnceAndCachesTheCard()
     {
         var handler = new LogoHandler();
