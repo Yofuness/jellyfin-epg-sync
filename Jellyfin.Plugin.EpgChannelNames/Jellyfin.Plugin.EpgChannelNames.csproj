@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Jellyfin.Plugin.EpgChannelNames</RootNamespace>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -8,12 +8,12 @@
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Pin to the OLDEST supported server version. A plugin built against 10.11.N
-         will not load on servers older than 10.11.N. Never use a wildcard here. -->
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.0" ExcludeAssets="runtime" />
-    <PackageReference Include="Jellyfin.Model" Version="10.11.0" ExcludeAssets="runtime" />
-    <!-- Jellyfin 10.11.0 ships exactly this SkiaSharp (and its native library); never bundle it. -->
-    <PackageReference Include="SkiaSharp" Version="3.116.1" ExcludeAssets="runtime" />
+    <!-- Pin to the OLDEST supported server version. A plugin built against 12.N
+         will not load on servers older than 12.N. Never use a wildcard here. -->
+    <PackageReference Include="Jellyfin.Controller" Version="12.0.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="12.0.0" ExcludeAssets="runtime" />
+    <!-- Jellyfin 12.0 ships exactly this SkiaSharp (and its native library); never bundle it. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" ExcludeAssets="runtime" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="SerilogAnalyzer" Version="0.15.0" PrivateAssets="All" />

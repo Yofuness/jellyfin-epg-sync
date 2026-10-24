@@ -7,13 +7,13 @@ BASE_URL="${2:-https://github.com/Yofuness/jellyfin-epg-sync/releases/download/v
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$ROOT/Jellyfin.Plugin.EpgChannelNames"
 
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$ROOT":/src -w /src/Jellyfin.Plugin.EpgChannelNames mcr.microsoft.com/dotnet/sdk:9.0 \
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$ROOT":/src -w /src/Jellyfin.Plugin.EpgChannelNames mcr.microsoft.com/dotnet/sdk:10.0 \
   dotnet build -c Release -p:Version="$VER" -p:AssemblyVersion="$VER" -p:FileVersion="$VER"
 
 mkdir -p "$ROOT/dist"
 ZIP="epg-channel-names_$VER.zip"
 rm -f "$ROOT/dist/$ZIP"
-(cd "$PROJ/bin/Release/net9.0" && zip -q "$ROOT/dist/$ZIP" Jellyfin.Plugin.EpgChannelNames.dll)
+(cd "$PROJ/bin/Release/net10.0" && zip -q "$ROOT/dist/$ZIP" Jellyfin.Plugin.EpgChannelNames.dll)
 SUM=$(md5sum "$ROOT/dist/$ZIP" | cut -d' ' -f1)
 
 cat > "$ROOT/dist/manifest.json" <<JSON
@@ -29,7 +29,7 @@ cat > "$ROOT/dist/manifest.json" <<JSON
       {
         "version": "$VER",
         "changelog": "Release $VER",
-        "targetAbi": "10.11.0.0",
+        "targetAbi": "12.0.0.0",
         "sourceUrl": "$BASE_URL/$ZIP",
         "checksum": "$SUM",
         "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

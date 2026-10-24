@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Unit tests in a .NET 9 container. Add --integration to also run the plugin
-# inside a real Jellyfin 10.11 server (Docker) against a fake M3U + XMLTV.
+# inside a real Jellyfin 12 server (Docker) against a fake M3U + XMLTV.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-SDK=mcr.microsoft.com/dotnet/sdk:9.0
-# Oldest supported server: proves the plugin loads on every 10.11.x.
-JF_IMAGE=jellyfin/jellyfin:10.11.0
+SDK=mcr.microsoft.com/dotnet/sdk:10.0
+# Oldest supported server: proves the plugin loads on every 12.x.
+JF_IMAGE=${JF_IMAGE:-jellyfin/jellyfin:12.0}
 PORT=18097
 
 echo "== Unit tests"
@@ -42,7 +42,7 @@ cat > "$WORK/config/plugins/configurations/Jellyfin.Plugin.EpgChannelNames.xml" 
   <TeamDatabaseUrl>http://dispatcharr:8000/espn/</TeamDatabaseUrl>
 </PluginConfiguration>
 XML
-cp "$ROOT/Jellyfin.Plugin.EpgChannelNames/bin/Release/net9.0/Jellyfin.Plugin.EpgChannelNames.dll" "$WORK/config/plugins/EpgChannelNames/"
+cp "$ROOT/Jellyfin.Plugin.EpgChannelNames/bin/Release/net10.0/Jellyfin.Plugin.EpgChannelNames.dll" "$WORK/config/plugins/EpgChannelNames/"
 cat > "$WORK/tv/ch.m3u" <<'M3U'
 #EXTM3U
 #EXTINF:-1 tvg-id="nhl01" tvg-chno="101",NHL GAME 01 Old Team vs Stale Team
@@ -284,6 +284,11 @@ for pair in "$PREMIER_ID|Live NHL Hockey: Flyers vs Avalanche" "$(channel_id "CA
 done
 # Placeholder (program titled like its own channel) on a ruled channel stays out of the row.
 expect_in_row Shows "hasAired=false&isMovie=false&isSports=false&isKids=false&isNews=false&isSeries=true" "CA - STINGRAY NATURE" 0
+
+# Settings page group table: admin-only endpoint lists Dispatcharr groups with their automatic row.
+GROUP_JSON=$(curl -s -w " HTTP %{http_code}" "$J/EpgChannelNames/Groups" -H "$A")
+if grep -q '"Name":"AM | CA | DOCUMENTARY","Channels":2,"Automatic":"Shows"' <<<"$GROUP_JSON"; then echo "PASS: groups endpoint"; else echo "FAIL: groups endpoint: $GROUP_JSON"; exit 1; fi
+if [[ "$(curl -s -o /dev/null -w '%{http_code}' "$J/EpgChannelNames/Groups")" == 401 ]]; then echo "PASS: groups endpoint needs login"; else echo "FAIL: groups endpoint open without login"; exit 1; fi
 
 # Upcoming game: listed on the block covering its start time before it starts; the airing block stays plain.
 UPCOMING_ID=$(channel_id "CA - NHL GAME 02")

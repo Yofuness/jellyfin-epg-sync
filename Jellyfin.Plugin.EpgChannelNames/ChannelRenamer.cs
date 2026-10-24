@@ -40,7 +40,7 @@ public partial class ChannelRenamer
     private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ChannelRenamer> _logger;
     private readonly IDispatcharrClient _dispatcharr;
-    private readonly IItemRepository _itemRepository;
+    private readonly IItemPersistenceService _itemPersistence;
     private readonly ITeamDatabase? _teams;
     private readonly IMatchupImages? _images;
     private readonly Func<PluginConfiguration> _getConfig;
@@ -51,11 +51,11 @@ public partial class ChannelRenamer
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
     /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
-    /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
+    /// <param name="itemPersistence">Instance of the <see cref="IItemPersistenceService"/> interface.</param>
     /// <param name="teams">Instance of the <see cref="ITeamDatabase"/> interface.</param>
     /// <param name="images">Instance of the <see cref="IMatchupImages"/> interface.</param>
-    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, ITeamDatabase teams, IMatchupImages images)
-        : this(libraryManager, logger, dispatcharr, itemRepository, () => Plugin.Instance!.Configuration, teams, images)
+    public ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemPersistenceService itemPersistence, ITeamDatabase teams, IMatchupImages images)
+        : this(libraryManager, logger, dispatcharr, itemPersistence, () => Plugin.Instance!.Configuration, teams, images)
     {
     }
 
@@ -65,18 +65,18 @@ public partial class ChannelRenamer
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ChannelRenamer}"/> interface.</param>
     /// <param name="dispatcharr">Instance of the <see cref="IDispatcharrClient"/> interface.</param>
-    /// <param name="itemRepository">Instance of the <see cref="IItemRepository"/> interface.</param>
+    /// <param name="itemPersistence">Instance of the <see cref="IItemPersistenceService"/> interface.</param>
     /// <param name="getConfig">Returns the current configuration.</param>
     /// <param name="teams">The team database, or null for none.</param>
     /// <param name="images">Matchup images, or null for none.</param>
-    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemRepository itemRepository, Func<PluginConfiguration> getConfig, ITeamDatabase? teams = null, IMatchupImages? images = null)
+    internal ChannelRenamer(ILibraryManager libraryManager, ILogger<ChannelRenamer> logger, IDispatcharrClient dispatcharr, IItemPersistenceService itemPersistence, Func<PluginConfiguration> getConfig, ITeamDatabase? teams = null, IMatchupImages? images = null)
     {
         _teams = teams;
         _images = images;
         _libraryManager = libraryManager;
         _logger = logger;
         _dispatcharr = dispatcharr;
-        _itemRepository = itemRepository;
+        _itemPersistence = itemPersistence;
         _getConfig = getConfig;
     }
 
@@ -496,7 +496,7 @@ public partial class ChannelRenamer
             }
 
             await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-            await SaveImagesIfChangedAsync(program, logoChanged).ConfigureAwait(false);
+            await SaveImagesIfChangedAsync(program, logoChanged, cancellationToken).ConfigureAwait(false);
             stats.ProgramsUpdated++;
         }
     }
@@ -562,7 +562,7 @@ public partial class ChannelRenamer
             }
 
             await program.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-            await SaveImagesIfChangedAsync(program, logoChanged).ConfigureAwait(false);
+            await SaveImagesIfChangedAsync(program, logoChanged, cancellationToken).ConfigureAwait(false);
             stats.ProgramsCategorized++;
         }
     }
@@ -646,16 +646,14 @@ public partial class ChannelRenamer
         }
     }
 
-    // Jellyfin 10.11 does not persist images of an existing item on update (only the item row), and
-    // ILibraryManager.UpdateImagesAsync skips non-library items such as Live TV programs. SaveImages writes them.
-    private Task SaveImagesIfChangedAsync(LiveTvProgram program, bool changed)
+    // Updating an existing item does not persist its images (only the item row), and
+    // ILibraryManager.UpdateImagesAsync skips non-library items such as Live TV programs. SaveImagesAsync writes them.
+    private async Task SaveImagesIfChangedAsync(LiveTvProgram program, bool changed, CancellationToken cancellationToken)
     {
         if (changed)
         {
-            _itemRepository.SaveImages(program);
+            await _itemPersistence.SaveImagesAsync(program, cancellationToken).ConfigureAwait(false);
         }
-
-        return Task.CompletedTask;
     }
 
     private async Task<IReadOnlyList<DispatcharrChannel>?> GetDispatcharrChannelsAsync(PluginConfiguration config, CancellationToken cancellationToken)

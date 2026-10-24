@@ -1,4 +1,4 @@
-# EPG Channel Names (Jellyfin 10.11 plugin)
+# EPG Channel Names (Jellyfin 12 plugin)
 
 Keeps Jellyfin Live TV in sync with Dispatcharr: event channels show what's on (`CA - NHL GAME 01 · DUCKS @ RANGERS`), and sports programs show the teams playing (`Live NHL Hockey: Flyers vs Avalanche`).
 
@@ -35,7 +35,7 @@ Upgrading from the old `releases/latest/download/manifest.json` URL: it still wo
 
 ## Install (manual)
 1. `./build.sh` (needs Docker only)
-2. Copy `Jellyfin.Plugin.EpgChannelNames/bin/Release/net9.0/Jellyfin.Plugin.EpgChannelNames.dll` into `<jellyfin config>/plugins/EpgChannelNames/`
+2. Copy `Jellyfin.Plugin.EpgChannelNames/bin/Release/net10.0/Jellyfin.Plugin.EpgChannelNames.dll` into `<jellyfin config>/plugins/EpgChannelNames/`
 3. Restart Jellyfin
 
 ## Releasing
@@ -81,9 +81,11 @@ Channel names now keep the full prefix (`CA - NHL GAME 01 · …` instead of `NH
 
 ## Tests
 - `./test.sh`: unit tests (Docker only)
-- `./test.sh --integration`: also runs the plugin in a real Jellyfin 10.11 container
+- `./test.sh --integration`: also runs the plugin in a real Jellyfin 12 container
 
 ## Requirement
+Jellyfin 12.0 or newer (tested on 12.0 and 12.2). Jellyfin 10.11 servers get v2.12.0, the last 10.11 version, from the same repository.
+
 Either Dispatcharr connected (above), or EPG data for each game channel. With neither, the channel keeps the "nothing airing" name.
 
 ## License

@@ -32,7 +32,7 @@ public class ChannelRenamerTests
     private readonly Dictionary<Guid, LiveTvProgram> _laterItems = new();
     private readonly PluginConfiguration _config = new();
     private readonly Mock<IDispatcharrClient> _dispatcharr = new();
-    private readonly Mock<MediaBrowser.Controller.Persistence.IItemRepository> _repository = new();
+    private readonly Mock<MediaBrowser.Controller.Persistence.IItemPersistenceService> _repository = new();
     private readonly Dictionary<string, string> _streamNames = new();
     private readonly Dictionary<string, string> _groups = new();
 
@@ -681,7 +681,7 @@ public class ChannelRenamerTests
 
         Assert.Equal("/metadata/livetv/x/poster.png", _programItems[channel.Id].GetImageInfo(MediaBrowser.Model.Entities.ImageType.Primary, 0)!.Path);
         _library.Verify(l => l.ConvertImageToLocal(channel, It.IsAny<MediaBrowser.Controller.Entities.ItemImageInfo>(), 0, false), Times.Once());
-        _repository.Verify(r => r.SaveImages(_programItems[channel.Id]), Times.Once());
+        _repository.Verify(r => r.SaveImagesAsync(_programItems[channel.Id], It.IsAny<CancellationToken>()), Times.Once());
     }
 
     [Fact]
